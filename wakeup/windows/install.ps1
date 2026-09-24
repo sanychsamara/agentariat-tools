@@ -2,8 +2,11 @@
 # adapters, and the verified messaging client. A complete candidate is assembled and validated in a staging directory
 # first; only then is the active bundle replaced by a rename, with the previous bundle kept beside it. Every running
 # watcher or notifier leaves a pid file under DIR\.running.d\ for its lifetime; activation is refused while any of
-# those pids is alive (stop them first, or pass -Force and restart them afterwards). If activation fails, the previous
-# bundle is put back; if even that fails, both bundles are kept and named. Source-reviewed; not yet run on Windows.
+# those pids is alive. The pid files detect already-running cooperating watchers only: a watcher starting during
+# activation, a second installer, or a watcher from before the pid files existed are not detected (a known open issue).
+# Stop watchers and notifiers and disable their automatic restart first, run one installer, then restart them; or pass
+# -Force. If activation fails, the previous bundle is put back; if even that fails, both bundles and the candidate are
+# kept and named. Source-reviewed; not yet run on Windows.
 #   powershell -File wakeup\windows\install.ps1 [-Dir <path>] [-Force]      default: $HOME\.agentariat\tools
 # Exit 0 installed; 1 refused (a watcher runs); 2 the candidate did not validate or could not be activated.
 param([string]$Dir = "$HOME\.agentariat\tools", [switch]$Force)

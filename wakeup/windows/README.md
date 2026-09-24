@@ -25,7 +25,9 @@ The installer assembles and validates a complete candidate in a staging director
 staged watcher imported) and only then replaces the active bundle by a rename, keeping the previous bundle at
 `...\tools.previous` and putting it back if activation fails. Every running watcher and notifier writes a pid file
 under `...\tools\.running.d\`; the installer refuses while any of those pids is alive (`-Force` overrides;
-restart them afterwards). This installer is source-reviewed, not yet run on Windows.
+restart them afterwards). The pid files detect already-running watchers only, not one starting during activation,
+a second installer, or a watcher from before they existed: stop watchers and notifiers and disable their automatic
+restart before upgrading (a known open issue). This installer is source-reviewed, not yet run on Windows.
 
 Update the kit files and the client together (rerun `get-client.py` after the pin changes), then restart the
 notifier and any scheduled task that runs the watcher.

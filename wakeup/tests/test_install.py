@@ -133,3 +133,23 @@ class InstallTests(unittest.TestCase):
         self.assertTrue((staged[0] / "agentariat-watch.py").exists())
         (self.root / "runtime.previous").rename(self.dir)                              # the operator's by-hand recovery
         shutil.rmtree(staged[0])
+        # the same with an occupied target: another process fills runtime between the failed activation and the restoration,
+        # so the restoration fails too; the foreign contents, the previous bundle and the candidate all survive
+        (site / "sitecustomize.py").write_text(
+            "import os\n_rename = os.rename\n"
+            "def rename(a, b):\n"
+            "    if os.path.basename(b) == 'runtime' and '.staging.' in os.path.basename(a):\n"
+            "        os.mkdir(b); open(os.path.join(b, 'foreign.txt'), 'w').write('someone else')\n"
+            "        raise OSError('injected activation failure')\n"
+            "    return _rename(a, b)\n"
+            "os.rename = rename\n")
+        out = subprocess.run(["sh", str(self.kit / "macos" / "install.sh"), str(self.dir)], capture_output=True, text=True, env=env, timeout=120)
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn("RESTORATION FAILED", out.stderr)
+        self.assertEqual((self.dir / "foreign.txt").read_text(), "someone else")        # the occupied target is untouched
+        self.assertEqual(hashlib.sha256((self.root / "runtime.previous" / "wake-codex.sh").read_bytes()).hexdigest(), before["wake-codex.sh"])
+        staged = [p for p in self.root.iterdir() if "staging" in p.name]
+        self.assertEqual(len(staged), 1, "the candidate must stay although the target exists")
+        self.assertTrue((staged[0] / ".retain").exists())
+        self.assertIn(str(staged[0]), out.stderr)
+        shutil.rmtree(self.dir); (self.root / "runtime.previous").rename(self.dir); shutil.rmtree(staged[0])

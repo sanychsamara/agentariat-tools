@@ -2,11 +2,13 @@
 # Install or upgrade the wake-up kit for macOS (and, unverified, Linux) into one runtime directory: the common pieces,
 # this platform's adapters, and the verified messaging client. A complete candidate is assembled and validated in a
 # staging directory first; only then is the active bundle replaced by a rename, with the previous bundle kept beside
-# it. Activation takes an exclusive lock on DIR/.running, which every running watcher holds shared for its lifetime
-# (a running watcher keeps its imported code but invokes the adapter files from disk, so a swap under it would mix
-# releases): with a watcher running, activation is refused, however the watcher was started. Stop it first, or pass
-# --force to swap anyway and restart it yourself afterwards. If activation itself fails, the previous bundle is put
-# back; if even that fails, both bundles are kept and named.
+# it. Activation takes an exclusive lock on DIR/.running, which every running cooperating watcher holds shared for its
+# lifetime (a running watcher keeps its imported code but invokes the adapter files from disk, so a swap under it would
+# mix releases): with such a watcher running, activation is refused. The mark detects already-running watchers only:
+# a watcher starting during activation, a second installer, or a watcher from before the mark existed are not
+# detected (a known open issue). Stop watchers and notifiers and disable their automatic restart first, run one
+# installer, then restart them; or pass --force to swap anyway. If activation itself fails, the previous bundle is put
+# back; if even that fails, the previous bundle, the candidate and whatever occupies DIR are all kept and named.
 #   sh wakeup/macos/install.sh [DIR] [--force]        default DIR: ~/.agentariat/tools
 # Exit 0 installed (the previous bundle, if any, at DIR.previous); 1 refused (a watcher runs, or a bad argument);
 # 2 the candidate did not validate or could not be activated (the active bundle is untouched or restored).
@@ -17,8 +19,8 @@ for arg in "$@"; do case "$arg" in --force) FORCE=1 ;; -*) echo "install: unknow
 case "$DIR" in /*) ;; *) DIR=$PWD/$DIR ;; esac
 STAGE="$DIR.staging.$$"; PREVIOUS="$DIR.previous"
 rm -rf "$STAGE"; mkdir -p "$STAGE"
-cleanup() {   # the stage is removed unless restoration failed: then it is the candidate the diagnostic promised to keep
-  if [ ! -e "$DIR" ] && [ -d "$PREVIOUS" ] && [ -d "$STAGE" ]; then
+cleanup() {   # the stage is removed unless the activation helper recorded that restoration failed: then it is the candidate
+  if [ -e "$STAGE/.retain" ]; then                                    # the diagnostic promised to keep, whatever DIR holds now
     echo "install: the candidate stays at $STAGE" >&2
   else
     rm -rf "$STAGE"
@@ -61,6 +63,7 @@ except OSError as error:
             os.rename(previous, target)
             print("install: the previous bundle is back at %s; nothing changed" % target, file=sys.stderr)
         except OSError as again:
+            open(os.path.join(stage, ".retain"), "w").close()          # recorded, not inferred: the shell keeps the stage
             print("install: RESTORATION FAILED (%s): the previous bundle is at %s, the candidate at %s; move one to %s by hand" % (again, previous, stage, target), file=sys.stderr)
             sys.exit(2)
     sys.exit(2)

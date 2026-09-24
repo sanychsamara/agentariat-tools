@@ -49,8 +49,10 @@ itself: `windows/install.ps1` copies it next to the watcher.
 ## The running mark
 
 For its lifetime the watcher holds a shared lock on `.running` in its own directory (on Windows, a pid file under
-`.running.d/`); the installers take that lock exclusively before swapping the bundle, so an upgrade never happens
-under a running watcher, whatever command line started it.
+`.running.d/`); the installers take that lock exclusively before swapping the bundle, so an upgrade is refused while
+an already-running cooperating watcher holds it. The mark does not cover a watcher starting during activation, two
+installers at once, or a watcher from before the mark existed: stop watchers and notifiers, disable their automatic
+restart, run one installer, restart them. The startup-during-activation race is a known open issue.
 
 ## State files
 
