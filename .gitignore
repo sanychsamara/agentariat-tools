@@ -5,3 +5,6 @@ __pycache__/
 .env
 watch.json
 watch.log
+
+# the downloaded messaging client: fetched and verified by get-client.py, never committed
+wakeup/common/agentariat.py
