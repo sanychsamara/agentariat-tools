@@ -17,7 +17,14 @@ for arg in "$@"; do case "$arg" in --force) FORCE=1 ;; -*) echo "install: unknow
 case "$DIR" in /*) ;; *) DIR=$PWD/$DIR ;; esac
 STAGE="$DIR.staging.$$"; PREVIOUS="$DIR.previous"
 rm -rf "$STAGE"; mkdir -p "$STAGE"
-trap 'rm -rf "$STAGE"' EXIT
+cleanup() {   # the stage is removed unless restoration failed: then it is the candidate the diagnostic promised to keep
+  if [ ! -e "$DIR" ] && [ -d "$PREVIOUS" ] && [ -d "$STAGE" ]; then
+    echo "install: the candidate stays at $STAGE" >&2
+  else
+    rm -rf "$STAGE"
+  fi
+}
+trap cleanup EXIT
 cp "$HERE"/../common/agentariat-watch.py "$HERE"/../common/get-client.py "$HERE"/../common/client.sha256 "$HERE"/wake-claude.py "$HERE"/wake-codex.sh "$STAGE"/
 chmod +x "$STAGE"/agentariat-watch.py "$STAGE"/wake-claude.py "$STAGE"/wake-codex.sh "$STAGE"/get-client.py
 python3 "$STAGE"/get-client.py || { echo "install: the client could not be fetched and verified; the active bundle in $DIR is untouched" >&2; exit 2; }

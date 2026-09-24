@@ -80,10 +80,15 @@ class WindowsLogicTests(unittest.TestCase):
         self.codex("import sys; print('error: no rollout found for thread id', file=sys.stderr); sys.exit(1)")
         code, how = self.run_main({"WAKE_TIMEOUT": "1"})
         self.assertEqual(code, 2, how)                                   # no receipt after launch is never "not sent"
-        self.win.observe = lambda item, deadline: (_ for _ in ()).throw(RuntimeError("boom"))
-        self.codex(self.insert("print('Queued message it-1 for thread x')"))
+        db = sqlite3.connect(self.home / "queue_10.sqlite"); db.execute("delete from queued_items"); db.commit(); db.close()
+        observed = []
+        def boom(item, deadline):
+            observed.append(item); raise RuntimeError("boom")
+        self.win.observe = boom
+        self.codex(self.insert("print('Queued message it-1 for thread x')"))   # a fresh row, so the child's insert succeeds
         code, how = self.run_main({"WAKE_TIMEOUT": "1"})
         self.assertEqual(code, 2, how)                                   # an exception during observation: unconfirmed
+        self.assertEqual(len(observed), 1, "observation must have been attempted")
 
     def test_the_busy_bound_is_enforced_with_a_monotonic_deadline_and_the_probe_seconds_are_validated(self):
         state = self.home / "state_9.sqlite"

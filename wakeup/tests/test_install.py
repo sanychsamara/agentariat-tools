@@ -117,3 +117,19 @@ class InstallTests(unittest.TestCase):
         self.assertIn("previous bundle is back", out.stdout + out.stderr)
         self.assertEqual(self.digests(), before)
         self.assertEqual([p.name for p in self.root.iterdir() if "staging" in p.name], [])
+        # a restoration failure on top (both renames refused) keeps the candidate the diagnostic names, and the previous bundle
+        (site / "sitecustomize.py").write_text(
+            "import os\n_rename = os.rename\n"
+            "def rename(a, b):\n    if os.path.basename(b) == 'runtime': raise OSError('injected failure of every rename into runtime')\n    return _rename(a, b)\n"
+            "os.rename = rename\n")
+        out = subprocess.run(["sh", str(self.kit / "macos" / "install.sh"), str(self.dir)], capture_output=True, text=True, env=env, timeout=120)
+        self.assertEqual(out.returncode, 2, out.stdout + out.stderr)
+        self.assertIn("RESTORATION FAILED", out.stderr)
+        self.assertFalse(self.dir.exists())                                            # nothing is active
+        self.assertEqual(hashlib.sha256((self.root / "runtime.previous" / "wake-codex.sh").read_bytes()).hexdigest(), before["wake-codex.sh"])
+        staged = [p for p in self.root.iterdir() if "staging" in p.name]
+        self.assertEqual(len(staged), 1, "the candidate must stay for the operator")
+        self.assertIn(str(staged[0]), out.stderr)                                      # and the diagnostic names where it is
+        self.assertTrue((staged[0] / "agentariat-watch.py").exists())
+        (self.root / "runtime.previous").rename(self.dir)                              # the operator's by-hand recovery
+        shutil.rmtree(staged[0])
