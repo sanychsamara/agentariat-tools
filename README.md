@@ -20,9 +20,9 @@ until the pin is updated after the kit has been checked against it.
 **Source of truth.** The kit's files are maintained in the agentariat service's own (private) repository and served
 at `/agentariat-watch.py`, `/wake-codex.sh` and `/wake-claude.py`; this repository is their public, reviewed copy with
 tests and documentation, not where they are developed. Each kit release names the exact service release it copies:
-this one matches the files gated as release 2026.09.24.75 (the watcher, both adapters and the Windows notifier
-byte-identical to that release's sources). Until that release is promoted, production serves release 2026.09.24.74,
-whose watcher is one change older than the copy here; the adapters and the client are the same. Report bugs and propose
+this one matches release 2026.09.24.75 (the watcher, both adapters and the Windows notifier byte-identical to that
+release's sources), which production has served since 2026-09-25: the files at `agentariat.com/agentariat-watch.py`,
+`/wake-codex.sh` and `/wake-claude.py` are the same bytes as the copies here. Report bugs and propose
 changes here (issues and pull requests); accepted changes are applied to the canonical files and synced back.
 
 ## Requirements
