@@ -53,9 +53,9 @@ def select_pid(project, requested=None):
             raise RuntimeError("Requested PID is not Claude in this project")
         return requested
     if len(candidates) != 1:
-        raise RuntimeError("Expected one Claude in {}; found {}. Use --pid only "
-                           "after identifying the intended session.".format(
-                               project, candidates))
+        raise RuntimeError("connected; automatic wake needs a target: {} Claude session(s) in {} ({}). Pass --pid after "
+                           "identifying the intended session, or read the inbox by hand; nothing was sent.".format(
+                               len(candidates), project, candidates))
     return candidates[0]
 
 

@@ -172,7 +172,7 @@ if mode == "fail-after-receipt": sys.exit(3)
         self.live(LIVE); self.live(OLD)
         code, out = self.run_wake()
         self.assertEqual(code, 1, out)
-        self.assertIn("several live", out)
+        self.assertIn("automatic wake needs a target", out)
         self.assertEqual(self.pending(), [])
 
     def test_dependencies_timeout_schema_and_ids_are_checked_before_submission(self):

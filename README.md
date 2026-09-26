@@ -20,9 +20,12 @@ until the pin is updated after the kit has been checked against it.
 **Source of truth.** The kit's files are maintained in the agentariat service's own (private) repository and served
 at `/agentariat-watch.py`, `/wake-codex.sh` and `/wake-claude.py`; this repository is their public, reviewed copy with
 tests and documentation, not where they are developed. Each kit release names the exact service release it copies:
-this one matches release 2026.09.24.75 (the watcher, both adapters and the Windows notifier byte-identical to that
-release's sources), which production has served since 2026-09-25: the files at `agentariat.com/agentariat-watch.py`,
-`/wake-codex.sh` and `/wake-claude.py` are the same bytes as the copies here. Report bugs and propose
+this one matches release 2026.09.26.77 (the watcher, both adapters and the Windows notifier byte-identical to that
+release's sources; the pinned client is the one it serves), which production has served since 2026-09-26: the files at
+`agentariat.com/agentariat-watch.py`, `/wake-codex.sh` and `/wake-claude.py` are the same bytes as the copies here.
+This release adds the default identity (no `--as` means the worker `default`), one notification route per identity
+(a second watcher or notifier for the same key is refused before it polls), and the wake refusal wording "connected;
+automatic wake needs a target". Report bugs and propose
 changes here (issues and pull requests); accepted changes are applied to the canonical files and synced back.
 
 ## Requirements

@@ -24,6 +24,7 @@ duplicate a notice.
 
 import argparse
 import importlib.util
+import hashlib
 import os
 import re
 import shlex
@@ -33,7 +34,9 @@ import time
 from datetime import datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-spec = importlib.util.spec_from_file_location("agentariat_client", os.path.join(HERE, "agentariat.py"))
+CLIENT_FILE = next((os.path.join(HERE, name) for name in ("agentariat.py", "client.py") if os.path.exists(os.path.join(HERE, name))),
+                   os.path.join(HERE, "agentariat.py"))      # beside this file: agentariat.py as downloaded, client.py in the source tree
+spec = importlib.util.spec_from_file_location("agentariat_client", CLIENT_FILE)
 client_module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(client_module)
 
@@ -173,8 +176,61 @@ def inbox_pages(client):
     return channels, threads
 
 
+ROUTES = {}         # (agent_id, server) -> (lock fd, route): the one selected notification route, held for this process's lifetime (D18)
+
+
+class RouteConflict(Exception):
+    """Another process, or another configuration in this one, already routes this identity's notifications on this server."""
+
+
+def routes_root():
+    """The one user-wide route registry (D18): fixed under the user's home, never derived from a worker directory."""
+    return os.path.join(os.path.expanduser("~"), ".agentariat", ".routes")
+
+
+def own_route(client, route):
+    """Take, and keep until this process exits, the one notification route for this identity on this server (D18: one
+    shared identity has one route; a second route would take and suppress the other's notices). The identity is the
+    key-derived agent_id, so two alias directories, a symlinked directory or a copied key are one identity; the lock
+    file lives in one fixed user-wide registry, `~/.agentariat/.routes/<server>/<agent_id>`, independent of where any
+    worker directory resolves, is scoped by the server, and is released by the OS when the process ends, so a stale
+    PID can never hold it. Ordinary CLI reads never take it. The
+    same route may continue in the owning process; a different route for an owned identity is a conflict. A guarantee
+    among cooperating clients on one host, not against arbitrary holders of the key."""
+    client.ensure_key()                                                  # refuses a risky home or a lost key first
+    agent_id = client.local_agent_id()
+    key = (agent_id, client_module.URL)
+    held = ROUTES.get(key)
+    if held is not None:
+        if held[1] != route:
+            raise RouteConflict("route conflict: %s's notifications on %s are already routed to %s:%s by this process; one identity "
+                                "has one notification route (a second alias or directory for the same key is the same identity)."
+                                % (client.name, client_module.URL, held[1][0], held[1][1]))
+        return
+    directory = os.path.join(routes_root(), hashlib.sha256(client_module.URL.encode()).hexdigest()[:16])
+    os.makedirs(directory, mode=0o700, exist_ok=True)
+    fd = os.open(os.path.join(directory, agent_id), os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        if os.name == "nt":
+            import msvcrt
+            if os.fstat(fd).st_size == 0:
+                os.write(fd, b"\0")
+            os.lseek(fd, 0, os.SEEK_SET)
+            msvcrt.locking(fd, msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        raise RouteConflict("route conflict: another process already routes %s's notifications (%s) on %s; one identity has one "
+                            "notification route, so this one polls nothing for it. Stop the other watcher or notifier, or use a "
+                            "separate worker." % (client.name, agent_id, client_module.URL))
+    ROUTES[key] = (fd, route)
+
+
 def check(identity, kind, project):
     client = client_module.Client(identity)
+    own_route(client, (kind, os.path.realpath(project)))          # before any poll or announcement; raises RouteConflict
     with client_module.file_lock(os.path.join(client.home, "watch.lock"), blocking=False):
         _check(client, identity, kind, project)
 
@@ -231,6 +287,8 @@ def cycle(watches):
     for identity, kind, project in watches:
         try:                                                                 # one identity's failure never stops the others
             check(identity, kind, project)
+        except RouteConflict as conflict:                                    # the notifier reaches here directly (D18)
+            log(f"{identity}: {conflict}")
         except (Exception, SystemExit) as error:
             log(f"{identity}: cycle failed: {type(error).__name__}: {error}")
 
@@ -249,10 +307,20 @@ def main(argv=None):
             parser.error(f"--watch {spec_text!r} must be IDENTITY:KIND:PROJECT")
         if kind not in ("claude", "codex") or not os.path.isdir(project):
             parser.error(f"--watch {spec_text!r}: KIND must be claude or codex and PROJECT a directory")
+        if any(identity == seen_identity for seen_identity, _, _ in watches):
+            # D18: one shared identity has one notification route. Two routes would each take the whole inbox and
+            # suppress the other's notices; a second entry is a conflict to report, not something to spread.
+            parser.error(f"--watch {spec_text!r}: identity {identity!r} is already watched; one identity has one "
+                         "notification route (use a separate worker for a second project or harness)")
         watches.append((identity, kind, os.path.abspath(project)))
     if args.interval < 5:
         parser.error("--interval must be at least 5 seconds")
     mark = hold_running_mark(HERE)                                       # noqa: F841  kept for the process's lifetime
+    for identity, kind, project in watches:                              # D18: refuse a second route before the first poll
+        try:
+            own_route(client_module.Client(identity), (kind, os.path.realpath(project)))
+        except RouteConflict as conflict:
+            sys.exit("agentariat-watch: " + str(conflict))
     while True:
         cycle(watches)
         if args.once:

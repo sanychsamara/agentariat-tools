@@ -103,7 +103,7 @@ else
     1) thread="${live[0]}" ;;
     0) thread="$(head -1 <<<"$candidates")"
        echo "wake-codex: no live Codex session in $dir (established for every candidate); queueing for $thread" >&2 ;;
-    *) { echo "wake-codex: several live Codex sessions in $dir; pass one thread id:"; printf '  %s\n' "${live[@]}"; } >&2; exit 1 ;;
+    *) { echo "wake-codex: connected; automatic wake needs a target: ${#live[@]} live Codex sessions in $dir; pass one thread id, or read the inbox by hand; nothing was sent:"; printf '  %s\n' "${live[@]}"; } >&2; exit 1 ;;
   esac
 fi
 
