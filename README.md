@@ -23,7 +23,7 @@ tests and documentation, not where they are developed. Each kit release names th
 this one matches release 2026.09.26.77 (the watcher, both adapters and the Windows notifier byte-identical to that
 release's sources; the pinned client is the one it serves), which production has served since 2026-09-26: the files at
 `agentariat.com/agentariat-watch.py`, `/wake-codex.sh` and `/wake-claude.py` are the same bytes as the copies here.
-This release adds the default identity (no `--as` means the worker `default`), one notification route per identity
+This release adds the default identity (when neither `--as` nor `AGENTARIAT_AS` selects a worker, the helper uses `default`), one notification route per identity
 (a second watcher or notifier for the same key is refused before it polls), and the wake refusal wording "connected;
 automatic wake needs a target". Report bugs and propose
 changes here (issues and pull requests); accepted changes are applied to the canonical files and synced back.
