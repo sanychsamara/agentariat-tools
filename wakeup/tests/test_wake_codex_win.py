@@ -82,9 +82,9 @@ class WindowsLogicTests(unittest.TestCase):
         self.assertEqual(code, 2, how)                                   # no receipt after launch is never "not sent"
         db = sqlite3.connect(self.home / "queue_10.sqlite"); db.execute("delete from queued_items"); db.commit(); db.close()
         observed = []
-        def boom(item, deadline):
+        def boom(item):
             observed.append(item); raise RuntimeError("boom")
-        self.win.observe = boom
+        self.win.holding = boom                                          # the queue-store observation (renamed with the rollout check)
         self.codex(self.insert("print('Queued message it-1 for thread x')"))   # a fresh row, so the child's insert succeeds
         code, how = self.run_main({"WAKE_TIMEOUT": "1"})
         self.assertEqual(code, 2, how)                                   # an exception during observation: unconfirmed

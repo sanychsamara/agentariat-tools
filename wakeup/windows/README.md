@@ -49,8 +49,11 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
   seconds (1..3600, default 60), is not observed in any readable store within it, or the store cannot be read
   afterwards.
 - **Receipt.** Codex's own `Queued message <id> for thread <thread>` line is passed through unchanged and the watcher
-  takes the id from it. The adapter finds that exact item in a queue store and confirms only when it leaves that same
-  store; there is no thread-wide fallback.
+  takes the id from it. The adapter finds that exact item in a queue store and confirms when it leaves that same
+  store. Codex 0.157.1 can take a wake before the item is ever seen in a store, so the adapter also reads the thread's
+  rollout: the message's exact text, appended as a user turn after the launch, confirms it was taken (exit 0).
+- **Candidates.** A terminal session's thread source is `cli` up to 0.155.1 and `vscode` on 0.157.1; both are
+  candidates, `exec` jobs and subagents are not.
 - **Instead of `sqlite3(1)`:** Python's `sqlite3` module reads the state and queue stores read-only, picking the
   highest-numbered `state_<n>` and `queue_<n>` by number (`_10` beats `_9`).
 - **Instead of `lsof(1)`:** a live session holds `~/.codex/thread-writer-locks/<thread>.lock` open; an exclusive
@@ -63,7 +66,11 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
 - **Known limit:** a new interactive session before its first prompt holds a lock but has no thread row, so
   `codex queue` fails with "no rollout found" (exit 1); give it any first prompt.
 
-Verified live on 0.155.1 with the earlier kit: lookup by project directory found the live thread, `codex queue` delivered (exit 0), the
+Verified live on 0.157.1 under families and workers (2026-09-27): a wake by thread id and one by project directory,
+each taken in about a second (exit 0); the watcher woke the session for posts addressed to it, by the thread id its
+binding recorded, and the session replied on the channel; a second watcher for the same worker was refused. Until that
+date a lookup by directory raised `NameError` (undefined error-code names); they are defined again. Verified live on
+0.155.1 with the earlier kit: lookup by project directory found the live thread, `codex queue` delivered (exit 0), the
 woken session replied. Checked offline (on the earlier revision) with mocked `codex queue` and fixture stores: path matching, store and
 version ordering, the lock probe, exit 2 when the queue cannot be read after sending, the receipt pass-through, a bad
 `WAKE_TIMEOUT` rejected before sending. The submission and observation rules ported from the POSIX adapter in this

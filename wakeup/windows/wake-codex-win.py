@@ -14,10 +14,15 @@ Exit 1 always means nothing was queued, so agentariat-watch.py may retry it; onc
 Upstream needs sqlite3(1) and lsof(1); neither exists on Windows. This reads the
 state and queue stores with Python's sqlite3 module, and probes the thread writer
 lock with an exclusive CreateFileW open instead of lsof.
+
+Taken is the exact queued item seen in a queue store and then gone from it, or, when
+Codex took the message before it was seen there (0.157 on its app server does), the
+message's text appended to the thread's rollout as a user turn after the launch.
 """
 
 import ctypes
 import glob
+import json
 import os
 import re
 import shutil
@@ -150,6 +155,9 @@ def comparable(path):
 
 
 KERNEL32 = None
+INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value      # what CreateFileW returns on failure, as its HANDLE restype reads it
+ERROR_FILE_NOT_FOUND, ERROR_PATH_NOT_FOUND, ERROR_SHARING_VIOLATION = 2, 3, 32
+INTERACTIVE = ("cli", "vscode")                        # threads.source of a terminal session: cli, and vscode from 0.157 (the app server runs it)
 
 
 def kernel32():
@@ -189,7 +197,8 @@ def resolve_thread(target):
         sys.exit("wake-codex: no state_*.sqlite in {}".format(CODEX_HOME))
     directory = os.path.realpath(target)
     wanted = comparable(directory)
-    rows = query_wait(state_db, "select id, cwd from threads where source = 'cli' and archived = 0 order by updated_at desc")
+    rows = query_wait(state_db, "select id, cwd from threads where source in ({}) and archived = 0 order by updated_at desc".format(
+        ", ".join("?" * len(INTERACTIVE))), INTERACTIVE)
     candidates = [thread for thread, cwd in rows if cwd and comparable(cwd) == wanted]
     if not candidates:
         sys.exit("no interactive Codex thread in {}".format(directory))
@@ -217,18 +226,57 @@ def queue_stores():
     return [path for _, path in sorted(numbered, reverse=True)]
 
 
-def observe(item, deadline):
-    """The store the exact item landed in, or None when no readable store holds it before the deadline."""
-    while True:
-        for db in queue_stores():
-            try:
-                if query(db, "select count(*) from queued_items where id = ?", (item,))[0][0]:
-                    return db
-            except (OSError, sqlite3.Error, Busy):
-                continue                                                # busy or unreadable: try again
-        if time.time() >= deadline:
-            return None
-        time.sleep(1)
+def holding(item):
+    """The store that holds the exact item now, or None when no readable store does."""
+    for db in queue_stores():
+        try:
+            if query(db, "select count(*) from queued_items where id = ?", (item,))[0][0]:
+                return db
+        except (OSError, sqlite3.Error, Busy):
+            continue                                                    # busy or unreadable: the caller tries again
+    return None
+
+
+def rollout(thread):
+    """(path, size) of the thread's rollout as the state store names it now; (None, 0) when it has none yet (a session
+    before its first turn) or the store cannot be read. Read before the launch, so only what is appended later counts."""
+    try:
+        rows = query(store("state") or "", "select rollout_path from threads where id = ?", (thread,), wait=1.0)
+        path = rows[0][0] if rows and rows[0][0] else None
+        return path, (os.path.getsize(path) if path else 0)
+    except (OSError, sqlite3.Error, Busy, TypeError, ValueError):
+        return None, 0
+
+
+def recorded(thread, known, message, since):
+    """True when the thread's rollout gained a user message with exactly this text, after the launch: Codex took the
+    message as a turn. Positive evidence only: an unreadable rollout proves nothing and is False. A session on the app
+    server (0.157) can take a message before it is ever seen in a queue store."""
+    path, offset = known
+    if path is None:
+        path, offset = rollout(thread)[0], 0                            # the rollout was created by this very turn
+    if path is None:
+        return False
+    floor = time.strftime("%Y-%m-%dT%H:%M:%S", time.gmtime(since - 2))  # rollout timestamps are UTC, ISO 8601
+    try:
+        with open(path, "rb") as stream:
+            stream.seek(offset)
+            for line in stream:
+                try:
+                    row = json.loads(line.decode("utf-8", errors="replace"))
+                except ValueError:
+                    continue
+                payload = row.get("payload") if isinstance(row, dict) else None
+                if not isinstance(payload, dict) or payload.get("type") != "message" or payload.get("role") != "user":
+                    continue
+                if not isinstance(row.get("timestamp"), str) or row["timestamp"] < floor:
+                    continue
+                content = payload.get("content")
+                if isinstance(content, list) and any(isinstance(part, dict) and part.get("text") == message for part in content):
+                    return True
+    except OSError:
+        return False
+    return False
 
 
 def main():
@@ -243,9 +291,10 @@ def main():
     probe_seconds()                                                     # validated before launch, like everything else
     thread = resolve_thread(target)
     binary = codex_binary()
+    known = rollout(thread)
     # ---- launch: from here on, nothing is "not sent" and no exception may turn into exit 1 ----
     try:
-        return launched(binary, thread, message, timeout)
+        return launched(binary, thread, message, timeout, known)
     except BaseException as error:                                      # noqa: BLE001  any failure after launch is unconfirmed
         if isinstance(error, SystemExit) and error.code in (0, 2):
             raise
@@ -254,7 +303,8 @@ def main():
         return 2
 
 
-def launched(binary, thread, message, timeout):
+def launched(binary, thread, message, timeout, known=(None, 0)):
+    since = time.time()
     result = subprocess.run([binary, "queue", "--thread", thread, "--message", message], capture_output=True)
     stdout = result.stdout.decode("utf-8", errors="replace")            # never a decoding error after launch
     stderr = result.stderr.decode("utf-8", errors="replace")
@@ -267,23 +317,32 @@ def launched(binary, thread, message, timeout):
         return 2
     if result.returncode:
         print("wake-codex: codex queue exited {} after printing a receipt for {}; treating it as submitted".format(result.returncode, item), file=sys.stderr)
-    # ---- observation: the exact item in the store it landed in, then gone from that same store ----
+    # ---- observation: the exact item in the store it landed in, then gone from that same store; or, for a message
+    # taken before it was ever seen in a store, its text recorded in the thread's rollout as a user turn ----
     deadline = time.time() + timeout
-    active = observe(item, deadline)
-    if not active:
-        print("queued {} for {}, but it was not observed in any readable queue store within {} s; cannot confirm".format(item, thread, timeout), file=sys.stderr)
-        return 2
-    while time.time() < deadline:
-        try:
-            if not query(active, "select count(*) from queued_items where id = ?", (item,))[0][0]:
-                print("delivered to {} ({} observed in {}, then taken as a turn)".format(thread, item, os.path.basename(active)))
-                return 0
-        except Busy:
-            pass                                                        # contention: try again within the deadline
-        except (OSError, sqlite3.Error) as error:
-            print("queued {} for {} (observed in {}), then reading that store failed: {}".format(item, thread, os.path.basename(active), error), file=sys.stderr)
-            return 2
+    active = None
+    while True:
+        if active is None:
+            active = holding(item)
+        else:
+            try:
+                if not query(active, "select count(*) from queued_items where id = ?", (item,))[0][0]:
+                    print("delivered to {} ({} observed in {}, then taken as a turn)".format(thread, item, os.path.basename(active)))
+                    return 0
+            except Busy:
+                pass                                                    # contention: try again within the deadline
+            except (OSError, sqlite3.Error) as error:
+                print("queued {} for {} (observed in {}), then reading that store failed: {}".format(item, thread, os.path.basename(active), error), file=sys.stderr)
+                return 2
+        if active is None and recorded(thread, known, message, since):
+            print("delivered to {} ({} taken as a turn: recorded in the thread's rollout)".format(thread, item))
+            return 0
+        if time.time() >= deadline:
+            break
         time.sleep(1)
+    if not active:
+        print("queued {} for {}, but it was not observed in any readable queue store or in the rollout within {} s; cannot confirm".format(item, thread, timeout), file=sys.stderr)
+        return 2
     print("queued {} for {} (observed in {}), not yet taken (session busy or not running)".format(item, thread, os.path.basename(active)), file=sys.stderr)
     return 2
 

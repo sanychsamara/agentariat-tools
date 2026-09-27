@@ -16,8 +16,8 @@ recorded before the scan moves, never a dismissal. Watcher log lines go to stder
 only notices reach the Monitor.
 
 It prints only into its own window: the Claude Code process named by CLAUDE_PID, which the
-Monitor inherits, verified by the start time Windows reports (GetProcessTimes; there is no
-ps). Work the dispatcher aims at another window of the worker stays pending for that window's
+Monitor inherits, with the start time Windows reports (GetProcessTimes; there is no ps),
+both captured once at startup; when that process ends or its pid is reused, it stops. Work the dispatcher aims at another window of the worker stays pending for that window's
 inbox; give a window its own job to give it its own Monitor. Fixed after the live Windows test
 of 2026-09-27; fixture-tested only until a rerun.
 Don't also run agentariat-watch.py for the same worker: one route per worker.
@@ -35,14 +35,25 @@ watch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(watch)
 
 
-def host():
-    """The Claude Code window this notifier prints into: the process named by CLAUDE_PID, which the Monitor's shell
-    inherits from its session, with the start time Windows reports for it. None when either is unknown."""
+def capture():
+    """The Claude Code window this notifier prints into, fixed once at startup: the process named by CLAUDE_PID, which the
+    Monitor's shell inherits from its session, with the start time Windows reports for it. None when either is unknown."""
     text = os.environ.get("CLAUDE_PID", "")
     if not text.isdigit():
         return None
     started = watch.client_module.process_started(int(text))
     return (int(text), started) if started else None
+
+
+ENDPOINT = capture()        # never re-derived: a reused pid must not make another window this Monitor's host (codex-root seq 6770)
+
+
+def host():
+    """The captured endpoint while that same process still lives with the same start time; None once it is gone or
+    changed (or was never known), so nothing is ever printed for a window this Monitor does not belong to."""
+    if ENDPOINT is None:
+        return None
+    return ENDPOINT if watch.client_module.process_started(ENDPOINT[0]) == ENDPOINT[1] else None
 
 
 def is_host(binding, endpoint):
@@ -75,6 +86,8 @@ def destinations(client, label, route_session, project, exclude=()):
 
 
 def notify(kind, project, message, binding=None):
+    if ENDPOINT is not None and host() is None:                               # the host ended or its pid was reused
+        return "failed", "this Monitor's window has ended; nothing printed"
     if binding is not None and not is_host(binding, host()):                  # rechecked just before printing
         return "failed", "the selected window is not this Monitor's; nothing printed"
     print(message, flush=True)
@@ -108,6 +121,9 @@ def main():
         parser.error("--interval must be at least 5 seconds")
     family, _, job = args.identity.partition("/")
     while True:
+        if ENDPOINT is not None and host() is None:
+            log("agentariat-notify: the window this Monitor belongs to (pid %d) has ended; stopping" % ENDPOINT[0])
+            return 1
         # cycle() keeps one bad poll from ending the loop; the route is this worker's, bound to this notifier's own window
         # once that window has called the helper (its label is looked up again every cycle)
         job = job or watch.client_module.DEFAULT_JOB
