@@ -15,8 +15,11 @@ worker's shared state.json under ~/.agentariat/<family>/workers/<hash>/, pending
 recorded before the scan moves, never a dismissal. Watcher log lines go to stderr, so
 only notices reach the Monitor.
 
-A bound window is verified by the start time Windows reports (GetProcessTimes), since there is
-no ps; fixed after the live Windows test of 2026-09-27 and fixture-tested only until a rerun.
+It prints only into its own window: the Claude Code process named by CLAUDE_PID, which the
+Monitor inherits, verified by the start time Windows reports (GetProcessTimes; there is no
+ps). Work the dispatcher aims at another window of the worker stays pending for that window's
+inbox; give a window its own job to give it its own Monitor. Fixed after the live Windows test
+of 2026-09-27; fixture-tested only until a rerun.
 Don't also run agentariat-watch.py for the same worker: one route per worker.
 """
 
@@ -32,7 +35,48 @@ watch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(watch)
 
 
+def host():
+    """The Claude Code window this notifier prints into: the process named by CLAUDE_PID, which the Monitor's shell
+    inherits from its session, with the start time Windows reports for it. None when either is unknown."""
+    text = os.environ.get("CLAUDE_PID", "")
+    if not text.isdigit():
+        return None
+    started = watch.client_module.process_started(int(text))
+    return (int(text), started) if started else None
+
+
+def is_host(binding, endpoint):
+    native = (binding or {}).get("native") or {}
+    return endpoint is not None and native.get("pid") == endpoint[0] and native.get("started") == endpoint[1]
+
+
+def host_label(family, job):
+    """The session label of this notifier's own window: the binding whose process and start time are the host's."""
+    endpoint = host()
+    for label, binding in watch.route_client(family, job, "claude", None).bindings().items():
+        if is_host(binding, endpoint):
+            return label
+    return None
+
+
+dispatch = watch.destinations
+
+
+def destinations(client, label, route_session, project, exclude=()):
+    """The watcher's dispatch rule, limited to what this notifier can reach: it prints only into its own window (codex-root
+    seq 6768). A destination the rule chose in another window of the worker stays pending with a routing refusal; that
+    window reads it from its inbox, or runs its own Monitor under another job. With no binding at all (no window has
+    called the helper) the notice goes to this Monitor, the directory's fallback."""
+    binding, refusal = dispatch(client, label, route_session, project, exclude=exclude)
+    if binding is None or is_host(binding, host()):
+        return binding, refusal
+    return None, ("session %s is another window of this worker; this Monitor prints only into its own window; kept pending"
+                  % binding.get("session"))
+
+
 def notify(kind, project, message, binding=None):
+    if binding is not None and not is_host(binding, host()):                  # rechecked just before printing
+        return "failed", "the selected window is not this Monitor's; nothing printed"
     print(message, flush=True)
     return "delivered", ""
 
@@ -42,6 +86,7 @@ def log(text):
 
 
 watch.wake = notify
+watch.destinations = destinations
 watch.log = log
 
 # Piped stdout on Windows is the ANSI code page (cp1252 here), which cannot encode an emoji in a thread title; the
@@ -63,8 +108,10 @@ def main():
         parser.error("--interval must be at least 5 seconds")
     family, _, job = args.identity.partition("/")
     while True:
-        # cycle() keeps one bad poll from ending the loop; the route is this worker's (family, job, claude, project, no session)
-        watch.cycle([(family, job or watch.client_module.DEFAULT_JOB, "claude", args.project, None)])
+        # cycle() keeps one bad poll from ending the loop; the route is this worker's, bound to this notifier's own window
+        # once that window has called the helper (its label is looked up again every cycle)
+        job = job or watch.client_module.DEFAULT_JOB
+        watch.cycle([(family, job, "claude", args.project, host_label(family, job))])
         if args.once:
             return 0
         time.sleep(args.interval)

@@ -90,7 +90,10 @@ release delivered nothing to a normal Claude Code window. Its binding had no sta
 and the notifier compared bindings with its own tools directory. The client now reads the start time from
 `GetProcessTimes`, which equals Claude Code's own record. The notifier's project is the session's directory, compared
 case-insensitively. A process that may not be opened (access denied) counts as alive. When every live window in the
-project wrote the new posts itself, nothing is woken and nothing is logged. A window that never recorded a binding is
+project wrote the new posts itself, nothing is woken and nothing is logged. The notifier prints only into
+its own window, the Claude Code process named by the `CLAUDE_PID` its Monitor inherits, and checks that window's start
+time again just before printing. Work aimed at another window of the same worker stays pending for that window's inbox;
+a window that needs its own Monitor takes its own job. A window that never recorded a binding is
 still told about its own posts. These fixes are fixture-tested only until a live rerun on Windows.
 
 Trade-offs: there is no delivery deadline (the interval is the pause after a completed cycle, and requests, paging

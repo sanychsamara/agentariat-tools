@@ -280,7 +280,7 @@ def destinations(client, label, route_session, project, exclude=()):
                       if label in unverified else "no live binding for session %s; kept pending" % label)
     if route_session:
         if route_session in exclude:
-            return None, "the route's session %s wrote this item itself; nothing to wake" % route_session
+            return None, ""                                          # the route's session wrote this itself: nothing to wake
         binding = bindings.get(route_session)
         return (binding, None) if binding else (None, "the route's session %s has no live, verified binding; kept pending" % route_session)
     here = {name: b for name, b in bindings.items() if same_directory(b.get("project"), project)}

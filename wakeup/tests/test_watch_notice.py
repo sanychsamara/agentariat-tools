@@ -13,6 +13,8 @@ from pathlib import Path
 STUB_CLIENT = '''
 URL = "https://example.invalid"
 DEFAULT_JOB = "default"
+def process_started(pid): return None
+def pid_alive(pid): return False
 def load_json(p): return {}
 def save_json(p, d): pass
 def file_lock(p, blocking=True): import contextlib; return contextlib.nullcontext()
@@ -96,9 +98,10 @@ class NoticeTests(unittest.TestCase):
         import contextlib, io
         out = io.StringIO()
         with contextlib.redirect_stdout(out):
-            self.assertEqual(notifier.watch.wake("claude", directory, "notice", {"session": "s"}), ("delivered", ""))
+            # another window's binding (no CLAUDE_PID host here): refused, nothing printed; no binding: this Monitor
+            self.assertEqual(notifier.watch.wake("claude", directory, "notice", {"session": "s", "native": {"pid": 1, "started": "x"}})[0], "failed")
             self.assertEqual(notifier.watch.wake("claude", directory, "notice"), ("delivered", ""))
-        self.assertEqual(out.getvalue(), "notice\nnotice\n")
+        self.assertEqual(out.getvalue(), "notice\n")
 
     def test_wake_outcomes_map_exit_codes_and_a_timeout_is_unconfirmed(self):
         directory = tempfile.mkdtemp()
