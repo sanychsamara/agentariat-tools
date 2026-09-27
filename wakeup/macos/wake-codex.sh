@@ -32,13 +32,15 @@ unconfirmed() { echo "wake-codex: $1" >&2; exit 2; }
 SQL_OUT="$(mktemp "${TMPDIR:-/tmp}/wake-codex.XXXXXX")" || refuse "cannot create a temporary file; nothing sent"
 trap 'rm -f "$SQL_OUT"' EXIT
 SQL_ERR=""
-sql() {  # sql DB QUERY: read-only; stdout printed, stderr kept in SQL_ERR (never a write into a running Codex's store)
+sql() {  # sql DB QUERY: read only; stdout printed, stderr kept in SQL_ERR (never a data write into a running Codex's store)
   SQL_ERR="$(sqlite3 -readonly "$1" "$2" 2>&1 >"$SQL_OUT")"; local rc=$?
   if (( rc != 0 )) && [[ "$SQL_ERR" == *"unable to open database file"* && ! -e "$1-wal" && ! -e "$1-shm" ]]; then
-    # A WAL store that no process holds open has no -shm, and a read-only open cannot create one (error 14): an idle
-    # Codex looked unreachable. With no writer attached the main file is complete, so read it as immutable (read-only).
-    local uri="$1"; uri="${uri//%/%25}"; uri="${uri//\?/%3f}"; uri="${uri//#/%23}"
-    SQL_ERR="$(sqlite3 -readonly "file:$uri?immutable=1" "$2" 2>&1 >"$SQL_OUT")"; rc=$?
+    # A WAL store that no process holds open has no -shm, and on some builds (macOS sqlite3 3.51) a read-only open
+    # cannot create one (error 14), so an idle Codex looked unreachable. Read it through an ordinary connection that
+    # refuses writes (query_only): SQLite's own locking coordinates it with any Codex writer, so the result is a
+    # consistent snapshot; the only files it touches are the -wal and -shm any reader creates. Never immutable: that
+    # skips locking and can return stale or torn rows while Codex writes (codex-root, both machines, 2026-09-27).
+    SQL_ERR="$(sqlite3 -cmd "PRAGMA query_only=1" "$1" "$2" 2>&1 >"$SQL_OUT")"; rc=$?
   fi
   cat "$SQL_OUT"; return $rc
 }

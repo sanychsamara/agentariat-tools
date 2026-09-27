@@ -12,6 +12,7 @@ from pathlib import Path
 SCRIPT = Path(__file__).resolve().parent.parent / "macos" / "wake-codex.sh"
 LIVE = "11111111-1111-4111-8111-111111111111"
 OLD = "22222222-2222-4222-8222-222222222222"
+NEW = "33333333-3333-4333-8333-333333333333"
 
 
 @unittest.skipUnless(shutil.which("bash") and shutil.which("sqlite3"), "bash and sqlite3 are needed for the POSIX adapter")
@@ -116,6 +117,94 @@ if mode == "fail-after-receipt": sys.exit(3)
         self.assertEqual(code, 2, output)                              # queued and never taken by the stub: unconfirmed
         if plain.returncode:                                           # where plain read-only fails, the fallback is what read it
             self.assertIn("unable to open", plain.stderr)
+
+    def race_wrapper(self, mode):
+        """A sqlite3 wrapper: a plain read-only open of a state store without side files fails with error 14 (as on the
+        Mac); once a writer has left them, it reads normally. Just before
+        the FIRST immutable fallback reads, `mode` happens: nothing, a writer's -wal file appears, or a writer commits a
+        newer live thread in the same project and checkpoints (the main file changes). Later reads are left alone."""
+        real = shutil.which("sqlite3")
+        once = self.home / "raced"
+        (self.bin / "sqlite3").write_text(f'''#!/usr/bin/env python3
+import os, sqlite3, sys
+args = sys.argv[1:]
+db = next((a for a in args if a.endswith(".sqlite") or a.startswith("file:")), "")
+if "state_" in db and "-readonly" in args and not (os.path.exists(db + "-wal") or os.path.exists(db + "-shm")):
+    print("Error: in prepare, unable to open database file (14)", file=sys.stderr); sys.exit(1)   # the Mac: no side files
+if "state_" in db and "-readonly" not in args and not os.path.exists({str(once)!r}):
+    open({str(once)!r}, "w").close()                          # the fallback's first read: the writer arrives now
+    path = db
+    if {mode!r} == "wal":
+        open(path + "-wal", "a").close()
+    elif {mode!r} == "hold":                                 # commit into the WAL and stay open: the row is only in -wal
+        import subprocess, time
+        ready = path + ".ready"
+        subprocess.Popen([sys.executable, "-c", (
+            "import sqlite3, sys, time\\n"
+            "c = sqlite3.connect(sys.argv[1]); c.execute('pragma wal_autocheckpoint=0')\\n"
+            "c.execute(\\"insert into threads (id, archived) values ('held', 1)\\"); c.commit()\\n"
+            "open(sys.argv[2], 'w').close(); time.sleep(4)"), path, ready])
+        while not os.path.exists(ready):
+            time.sleep(0.02)
+    elif {mode!r} == "write":
+        c = sqlite3.connect(path)
+        c.execute("insert into threads (id, rollout_path, created_at, updated_at, source, model_provider, cwd, title, sandbox_policy, approval_mode) values (?, '/r', 300, 300, 'cli', 'p', ?, 't', 's', 'a')", ({NEW!r}, {str(self.project.resolve())!r}))
+        c.commit(); c.close()
+os.execv({real!r}, [{real!r}] + args)
+''')
+        os.chmod(self.bin / "sqlite3", 0o755)
+
+    def race(self, mode):
+        self.race_wrapper(mode)
+        db = sqlite3.connect(self.home / "state_9.sqlite")
+        db.execute("pragma journal_mode=wal"); db.commit(); db.close()
+        self.live(LIVE)
+        return self.run_wake(timeout="1", env_extra={"WAKE_PROBE_SECONDS": "2"})
+
+    def test_an_unchanged_immutable_snapshot_is_used(self):
+        code, output = self.race("none")
+        self.assertIn("Queued message item-abc for thread " + LIVE, output)
+        self.assertEqual(code, 2, output)
+
+    def sql_once(self, mode):
+        """The adapter's own sql() on the state store, sourced from the script, with the race wrapper on PATH: returns
+        (output lines, the true row count after the call)."""
+        self.race_wrapper(mode)
+        db = sqlite3.connect(self.home / "state_9.sqlite")
+        db.execute("pragma journal_mode=wal"); db.commit(); db.close()
+        for f in ("state_9.sqlite-wal", "state_9.sqlite-shm"):
+            if (self.home / f).exists():
+                (self.home / f).unlink()
+        harness = ('SQL_OUT="$(mktemp)"; SQL_ERR=""; eval "$(sed -En \'/^(file_sig|sql)\\(\\) \\{/,/^busy\\(\\) \\{/p\' "$0" | sed \'$d\')"; '
+                   'sql "$1" "select count(*) from threads"; rc=$?; echo "rc=$rc"; rm -f "$SQL_OUT"')
+        env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"])
+        out = subprocess.run(["bash", "-c", harness, str(SCRIPT), str(self.home / "state_9.sqlite")], capture_output=True, text=True, env=env)
+        db = sqlite3.connect(self.home / "state_9.sqlite"); true = db.execute("select count(*) from threads").fetchone()[0]; db.close()
+        return out.stdout.strip().splitlines(), true
+
+    def test_the_fallback_read_is_coordinated_so_a_concurrent_writer_is_never_missed(self):
+        """codex-root on both machines, 2026-09-27: an immutable read of the live store missed a writer that arrived
+        after the side-file check, and returned torn rows during a checkpoint. The fallback is now an ordinary
+        query-only connection under SQLite's locking, so whatever a writer did before or during the read, the result
+        is the committed state: here always the true row count, with nothing voided and nothing stale."""
+        for mode in ("none", "write", "hold", "wal"):
+            with self.subTest(mode=mode):
+                if (self.home / "raced").exists():
+                    (self.home / "raced").unlink()
+                lines, true = self.sql_once(mode)
+                self.assertEqual(lines, [str(true), "rc=0"], (mode, lines, true))
+
+    def test_the_fallback_never_writes_data(self):
+        lines, true = self.sql_once("none")
+        env = dict(os.environ, PATH=str(self.bin) + os.pathsep + os.environ["PATH"])
+        harness = ('SQL_OUT="$(mktemp)"; SQL_ERR=""; eval "$(sed -En \'/^(file_sig|sql)\\(\\) \\{/,/^busy\\(\\) \\{/p\' "$0" | sed \'$d\')"; '
+                   'sql "$1" "insert into threads (id) values (\'x\')"; echo "rc=$? $SQL_ERR"; rm -f "$SQL_OUT"')
+        for f in ("state_9.sqlite-wal", "state_9.sqlite-shm"):
+            if (self.home / f).exists():
+                (self.home / f).unlink()
+        out = subprocess.run(["bash", "-c", harness, str(SCRIPT), str(self.home / "state_9.sqlite")], capture_output=True, text=True, env=env)
+        self.assertNotIn("rc=0", out.stdout)
+        db = sqlite3.connect(self.home / "state_9.sqlite"); self.assertEqual(db.execute("select count(*) from threads").fetchone()[0], true); db.close()
 
     def test_still_queued_is_exit_2_with_the_receipt_and_an_older_empty_store_never_means_delivered(self):
         self.live(LIVE)

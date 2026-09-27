@@ -95,9 +95,11 @@ class Busy(Exception):
 
 def query(database, sql, parameters=(), wait=5.0):
     """Read-only, never a write into a running Codex's store. Contention (including an open that fails for it) is
-    Busy; SQLite waits at most `wait` seconds for it."""
+    Busy; SQLite waits at most `wait` seconds for it. The path is a URI's: % and # are escaped as well as ?, or a home
+    folder named with one of them opens another file, or none."""
     try:
-        connection = sqlite3.connect("file:{}?mode=ro".format(database.replace("?", "%3f")), uri=True, timeout=max(0.0, wait))
+        path = database.replace("%", "%25").replace("?", "%3f").replace("#", "%23")
+        connection = sqlite3.connect("file:{}?mode=ro".format(path), uri=True, timeout=max(0.0, wait))
     except sqlite3.OperationalError as error:
         if any(word in str(error) for word in BUSY):
             raise Busy(str(error))
