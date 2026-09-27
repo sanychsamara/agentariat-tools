@@ -105,7 +105,7 @@ if mode == "fail-after-receipt": sys.exit(3)
 
     def test_an_idle_codex_wal_store_with_no_side_files_is_still_read(self):
         """A WAL-mode state store that no process holds open has no -wal or -shm file, and a plain read-only open fails
-        with error 14 (seen 2026-09-27 against an idle Codex 0.153.4). The adapter reads it as immutable instead."""
+        with error 14 (seen 2026-09-27 against an idle Codex 0.153.4). The adapter reads it through a query-only connection instead."""
         db = sqlite3.connect(self.home / "state_9.sqlite")
         db.execute("pragma journal_mode=wal"); db.commit(); db.close()
         self.assertFalse((self.home / "state_9.sqlite-wal").exists() or (self.home / "state_9.sqlite-shm").exists())
@@ -120,9 +120,9 @@ if mode == "fail-after-receipt": sys.exit(3)
 
     def race_wrapper(self, mode):
         """A sqlite3 wrapper: a plain read-only open of a state store without side files fails with error 14 (as on the
-        Mac); once a writer has left them, it reads normally. Just before
-        the FIRST immutable fallback reads, `mode` happens: nothing, a writer's -wal file appears, or a writer commits a
-        newer live thread in the same project and checkpoints (the main file changes). Later reads are left alone."""
+        Mac); once a writer has left them, it reads normally. Just before the first fallback read opens, `mode`
+        happens once: nothing, a stray -wal file appears, a writer commits and closes, or a writer commits into the
+        WAL and stays open. Later reads are left alone."""
         real = shutil.which("sqlite3")
         once = self.home / "raced"
         (self.bin / "sqlite3").write_text(f'''#!/usr/bin/env python3
@@ -161,7 +161,7 @@ os.execv({real!r}, [{real!r}] + args)
         self.live(LIVE)
         return self.run_wake(timeout="1", env_extra={"WAKE_PROBE_SECONDS": "2"})
 
-    def test_an_unchanged_immutable_snapshot_is_used(self):
+    def test_an_idle_store_is_read_through_the_query_only_fallback_and_the_wake_proceeds(self):
         code, output = self.race("none")
         self.assertIn("Queued message item-abc for thread " + LIVE, output)
         self.assertEqual(code, 2, output)
@@ -185,8 +185,10 @@ os.execv({real!r}, [{real!r}] + args)
     def test_the_fallback_read_is_coordinated_so_a_concurrent_writer_is_never_missed(self):
         """codex-root on both machines, 2026-09-27: an immutable read of the live store missed a writer that arrived
         after the side-file check, and returned torn rows during a checkpoint. The fallback is now an ordinary
-        query-only connection under SQLite's locking, so whatever a writer did before or during the read, the result
-        is the committed state: here always the true row count, with nothing voided and nothing stale."""
+        query-only connection under SQLite's locking. In these arranged fixtures every commit lands before the
+        fallback's SELECT opens (one of them still only in the WAL, its writer open), so the read must return exactly
+        the committed rows. A commit during an active SELECT is covered by SQLite's snapshot isolation, not by this
+        fixture: a consistent snapshot may rightly exclude it."""
         for mode in ("none", "write", "hold", "wal"):
             with self.subTest(mode=mode):
                 if (self.home / "raced").exists():
