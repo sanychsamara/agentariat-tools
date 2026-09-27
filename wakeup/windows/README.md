@@ -51,7 +51,8 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
 - **Receipt.** Codex's own `Queued message <id> for thread <thread>` line is passed through unchanged and the watcher
   takes the id from it. The adapter finds that exact item in a queue store and confirms when it leaves that same
   store. Codex 0.157.1 can take a wake before the item is ever seen in a store, so the adapter also reads the thread's
-  rollout: the message's exact text, appended as a user turn after the launch, confirms it was taken (exit 0).
+  rollout. Each submission appends a fresh marker to the notice (`[wake-<16 hex>]`); only that exact marked text,
+  appended as a user turn after the launch, confirms it was taken (exit 0), never an earlier or overlapping identical notice.
 - **Candidates.** A terminal session's thread source is `cli` up to 0.155.1 and `vscode` on 0.157.1; both are
   candidates, `exec` jobs and subagents are not.
 - **Instead of `sqlite3(1)`:** Python's `sqlite3` module reads the state and queue stores read-only, picking the

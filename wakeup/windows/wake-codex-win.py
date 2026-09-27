@@ -23,6 +23,7 @@ message's text appended to the thread's rollout as a user turn after the launch.
 import ctypes
 import glob
 import json
+import secrets
 import os
 import re
 import shutil
@@ -250,7 +251,7 @@ def rollout(thread):
 
 def recorded(thread, known, message, since):
     """True when the thread's rollout gained a user message with exactly this text, after the launch: Codex took the
-    message as a turn. Positive evidence only: an unreadable rollout proves nothing and is False. A session on the app
+    message as a turn. The text carries this submission's own marker (marked), which no other submission can have. Positive evidence only: an unreadable rollout proves nothing and is False. A session on the app
     server (0.157) can take a message before it is ever seen in a queue store."""
     path, offset = known
     if path is None:
@@ -303,8 +304,15 @@ def main():
         return 2
 
 
+def marked(message):
+    """The notice as submitted: the message and a fresh, unpredictable receipt marker. The rollout confirms a wake only by
+    this exact text, so an earlier or overlapping submission of the same notice never confirms this one (codex-root seq 6778)."""
+    return "{} [wake-{}]".format(message, secrets.token_hex(8))
+
+
 def launched(binary, thread, message, timeout, known=(None, 0)):
     since = time.time()
+    message = marked(message)
     result = subprocess.run([binary, "queue", "--thread", thread, "--message", message], capture_output=True)
     stdout = result.stdout.decode("utf-8", errors="replace")            # never a decoding error after launch
     stderr = result.stderr.decode("utf-8", errors="replace")
