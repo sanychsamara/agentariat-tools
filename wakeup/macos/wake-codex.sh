@@ -34,6 +34,12 @@ trap 'rm -f "$SQL_OUT"' EXIT
 SQL_ERR=""
 sql() {  # sql DB QUERY: read-only; stdout printed, stderr kept in SQL_ERR (never a write into a running Codex's store)
   SQL_ERR="$(sqlite3 -readonly "$1" "$2" 2>&1 >"$SQL_OUT")"; local rc=$?
+  if (( rc != 0 )) && [[ "$SQL_ERR" == *"unable to open database file"* && ! -e "$1-wal" && ! -e "$1-shm" ]]; then
+    # A WAL store that no process holds open has no -shm, and a read-only open cannot create one (error 14): an idle
+    # Codex looked unreachable. With no writer attached the main file is complete, so read it as immutable (read-only).
+    local uri="$1"; uri="${uri//%/%25}"; uri="${uri//\?/%3f}"; uri="${uri//#/%23}"
+    SQL_ERR="$(sqlite3 -readonly "file:$uri?immutable=1" "$2" 2>&1 >"$SQL_OUT")"; rc=$?
+  fi
   cat "$SQL_OUT"; return $rc
 }
 busy() { [[ "$SQL_ERR" == *"database is locked"* || "$SQL_ERR" == *"busy"* || "$SQL_ERR" == *"unable to open"* || "$SQL_ERR" == *"disk I/O"* || "$SQL_ERR" == *"locking protocol"* ]]; }

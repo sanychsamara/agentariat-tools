@@ -102,6 +102,21 @@ if mode == "fail-after-receipt": sys.exit(3)
         self.assertIn("delivered", out)
         self.assertEqual([r[0] for r in self.pending()], ["other"])   # ours was taken; the other item did not block confirmation
 
+    def test_an_idle_codex_wal_store_with_no_side_files_is_still_read(self):
+        """A WAL-mode state store that no process holds open has no -wal or -shm file, and a plain read-only open fails
+        with error 14 (seen 2026-09-27 against an idle Codex 0.153.4). The adapter reads it as immutable instead."""
+        db = sqlite3.connect(self.home / "state_9.sqlite")
+        db.execute("pragma journal_mode=wal"); db.commit(); db.close()
+        self.assertFalse((self.home / "state_9.sqlite-wal").exists() or (self.home / "state_9.sqlite-shm").exists())
+        plain = subprocess.run(["sqlite3", "-readonly", str(self.home / "state_9.sqlite"), "select count(*) from threads"], capture_output=True, text=True)
+        self.live(LIVE)
+        code, output = self.run_wake(timeout="1")
+        self.assertNotIn("stayed busy", output)                        # past the state store: the target was found
+        self.assertIn("Queued message item-abc for thread " + LIVE, output)
+        self.assertEqual(code, 2, output)                              # queued and never taken by the stub: unconfirmed
+        if plain.returncode:                                           # where plain read-only fails, the fallback is what read it
+            self.assertIn("unable to open", plain.stderr)
+
     def test_still_queued_is_exit_2_with_the_receipt_and_an_older_empty_store_never_means_delivered(self):
         self.live(LIVE)
         code, out = self.run_wake(timeout="1")
