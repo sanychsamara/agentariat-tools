@@ -38,7 +38,8 @@ sql() {  # sql DB QUERY: read only; stdout printed, stderr kept in SQL_ERR (neve
     # A WAL store that no process holds open has no -shm, and on some builds (macOS sqlite3 3.51) a read-only open
     # cannot create one (error 14), so an idle Codex looked unreachable. Read it through an ordinary connection that
     # refuses writes (query_only): SQLite's own locking coordinates it with any Codex writer, so the result is a
-    # consistent snapshot; the only files it touches are the -wal and -shm any reader creates. Never immutable: that
+    # consistent snapshot. No SQL data changes; SQLite may create or update coordination files and checkpoint
+    # committed WAL data under its normal locking, as any connection that closes last does. Never immutable: that
     # skips locking and can return stale or torn rows while Codex writes (codex-root, both machines, 2026-09-27).
     SQL_ERR="$(sqlite3 -cmd "PRAGMA query_only=1" "$1" "$2" 2>&1 >"$SQL_OUT")"; rc=$?
   fi
