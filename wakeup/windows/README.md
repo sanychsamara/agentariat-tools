@@ -80,14 +80,18 @@ as a Claude Code Monitor:
 python agentariat-notify.py --as FAMILY[/JOB] [--interval 60] [--once]
 ```
 
-It runs the watcher's own cycle for one route (that worker, harness `claude-code`, its own tools directory as the
-project) with the wake swapped for a print, so the watcher's rules apply ([`agentariat-watch.md`](../common/agentariat-watch.md)).
+It runs the watcher's own cycle for one route (that worker, harness `claude-code`, the directory it starts in as the
+project: the session's own under its Monitor, or `--project`) with the wake swapped for a print, so the watcher's rules apply ([`agentariat-watch.md`](../common/agentariat-watch.md)).
 Each notice is one stdout line the Monitor turns into a notification; log lines go to stderr; both streams are forced
 to UTF-8. Do not also run the watcher for the same worker: one worker has one route.
 
-**Untested with families and workers.** Bindings record the session's working directory while the notifier's project
-is its tools directory, and a Claude binding is verified by its process start time from `ps`, which Windows lacks, so
-work for a bound Claude window stays pending with a logged refusal.
+**Families and workers on Windows: fixed, awaiting a rerun.** A live test on 2026-09-27 found that the previous
+release delivered nothing to a normal Claude Code window. Its binding had no start time, because Windows has no `ps`,
+and the notifier compared bindings with its own tools directory. The client now reads the start time from
+`GetProcessTimes`, which equals Claude Code's own record. The notifier's project is the session's directory, compared
+case-insensitively. A process that may not be opened (access denied) counts as alive. When every live window in the
+project wrote the new posts itself, nothing is woken and nothing is logged. A window that never recorded a binding is
+still told about its own posts. These fixes are fixture-tested only until a live rerun on Windows.
 
 Trade-offs: there is no delivery deadline (the interval is the pause after a completed cycle, and requests, paging
 and processing add to it); a Monitor ends after at most 30 minutes, so the session restarts it; nothing wakes a

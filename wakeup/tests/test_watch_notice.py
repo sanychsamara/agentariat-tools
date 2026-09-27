@@ -53,7 +53,7 @@ class NoticeTests(unittest.TestCase):
         self.assertEqual(argv[:3] + argv[4:], ["python3", os.path.join(directory, "agentariat.py"), "--as", "read", TH, "--after", "0"])
         self.assertNotIn("echo", argv)                                                    # never a second command
         text = watch.notice(hostile, "direct", TH, CH, MSG, 0, shell="powershell")
-        self.assertIn("Run (powershell):", text)
+        self.assertIn("Run (powershell): python '", text)                                # python.org installs have no python3
         self.assertIn("--as 'x''; echo FORGED; ''' read", text)                            # PowerShell single quotes, a quote doubled
         self.assertNotIn("\n", text)
 

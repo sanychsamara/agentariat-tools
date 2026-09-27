@@ -9,16 +9,15 @@ Claude session runs this under its own Monitor, and each stdout line becomes a
 notification in that session.
 
 This runs agentariat-watch.py's own cycle for one route, the worker FAMILY[/JOB] with
-harness claude-code and this tools directory as the project, with only the wake swapped
+harness claude-code and the current directory (the session's, under its Monitor) as the project, with only the wake swapped
 for a print, so the rules are the watcher's (see its docstring): discovery over the
 worker's shared state.json under ~/.agentariat/<family>/workers/<hash>/, pending work
 recorded before the scan moves, never a dismissal. Watcher log lines go to stderr, so
 only notices reach the Monitor.
 
-Untested under D19. Bindings record the session's working directory, not this one, and
-a Claude binding is verified by its process start time from `ps`, which Windows lacks,
-so a bound Claude window is unverifiable here and its work stays pending with a logged
-refusal. Don't also run agentariat-watch.py for the same worker: one route per worker.
+A bound window is verified by the start time Windows reports (GetProcessTimes), since there is
+no ps; fixed after the live Windows test of 2026-09-27 and fixture-tested only until a rerun.
+Don't also run agentariat-watch.py for the same worker: one route per worker.
 """
 
 import argparse
@@ -56,14 +55,16 @@ def main():
     parser.add_argument("--as", dest="identity", required=True, help="the family key; FAMILY/JOB names a job (default job: default)")
     parser.add_argument("--interval", type=float, default=60.0, help="seconds to pause after a completed cycle (at least 5; default 60)")
     parser.add_argument("--once", action="store_true", help="run one cycle, then exit")
+    parser.add_argument("--project", default=os.getcwd(), help="the session's working directory, which its binding records "
+                        "(default: the current directory, where the Claude Code Monitor runs)")
     args = parser.parse_args()
     mark = watch.hold_running_mark(HERE)                                   # noqa: F841  an installer must not swap the bundle under this process
     if args.interval < 5:
         parser.error("--interval must be at least 5 seconds")
     family, _, job = args.identity.partition("/")
     while True:
-        # cycle() keeps one bad poll from ending the loop; the route is this worker's (family, job, claude, here, no session)
-        watch.cycle([(family, job or watch.client_module.DEFAULT_JOB, "claude", HERE, None)])
+        # cycle() keeps one bad poll from ending the loop; the route is this worker's (family, job, claude, project, no session)
+        watch.cycle([(family, job or watch.client_module.DEFAULT_JOB, "claude", args.project, None)])
         if args.once:
             return 0
         time.sleep(args.interval)
