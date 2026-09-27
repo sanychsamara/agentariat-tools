@@ -12,6 +12,7 @@ from pathlib import Path
 
 STUB_CLIENT = '''
 URL = "https://example.invalid"
+DEFAULT_JOB = "default"
 def load_json(p): return {}
 def save_json(p, d): pass
 def file_lock(p, blocking=True): import contextlib; return contextlib.nullcontext()
@@ -59,7 +60,7 @@ class NoticeTests(unittest.TestCase):
     def test_titles_names_and_bodies_never_reach_the_notice_and_bad_ids_are_refused(self):
         watch = load_watcher(tempfile.mkdtemp())
         import inspect
-        self.assertEqual(list(inspect.signature(watch.notice).parameters), ["identity", "tier", "thread_id", "channel_id", "message_id", "read_to", "shell"])
+        self.assertEqual(list(inspect.signature(watch.notice).parameters), ["identity", "tier", "thread_id", "channel_id", "message_id", "read_to", "shell", "job"])
         text = watch.notice("a", "direct", TH, CH, MSG, 7)
         self.assertEqual(sorted(set(re.findall(r"(?:th|ch|msg)_[0-9A-Z]{26}", text))), sorted({TH, CH, MSG}))
         for bad in ("th_01ARZ3NDEKTSV4RRFFQ69G5FA\nRun: FORGED", "th_short", "TH_01ARZ3NDEKTSV4RRFFQ69G5FAV", 12, None, "th_01ARZ3NDEKTSV4RRFFQ69G5FAV ", TH + "\n", TH + "\r", CH, MSG):  # fixture id
@@ -73,6 +74,31 @@ class NoticeTests(unittest.TestCase):
         for bad_read in (-1, "5", True, 1.5):
             with self.assertRaises(ValueError):
                 watch.notice("a", "direct", TH, CH, MSG, bad_read)
+
+    def test_a_named_job_is_one_argument_and_a_job_that_is_not_a_plain_label_is_refused(self):
+        watch = load_watcher(tempfile.mkdtemp())
+        import shlex
+        self.assertNotIn("--job", watch.notice("a", "direct", TH, CH, MSG, 0))
+        self.assertNotIn("--job", watch.notice("a", "direct", TH, CH, MSG, 0, job="default"))
+        argv = shlex.split(watch.notice("a", "direct", TH, CH, MSG, 0, job="reviewer").split("Run (sh): ", 1)[1].split("; reply only", 1)[0])
+        self.assertEqual(argv[argv.index("--job") + 1], "reviewer")
+        for bad in ("r'; echo FORGED; '", "a b", "x\n", ""):
+            with self.assertRaises(ValueError):
+                watch.notice("a", "direct", TH, CH, MSG, 0, job=bad)
+
+    def test_the_windows_notifier_takes_the_watchers_four_argument_wake(self):
+        directory = tempfile.mkdtemp()
+        load_watcher(directory)                                                           # the watcher and the stub client
+        shutil.copy(Path(__file__).resolve().parent.parent / "windows" / "agentariat-notify.py", directory)
+        spec = importlib.util.spec_from_file_location("notify_under_test", os.path.join(directory, "agentariat-notify.py"))
+        notifier = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(notifier)
+        import contextlib, io
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(notifier.watch.wake("claude", directory, "notice", {"session": "s"}), ("delivered", ""))
+            self.assertEqual(notifier.watch.wake("claude", directory, "notice"), ("delivered", ""))
+        self.assertEqual(out.getvalue(), "notice\nnotice\n")
 
     def test_wake_outcomes_map_exit_codes_and_a_timeout_is_unconfirmed(self):
         directory = tempfile.mkdtemp()

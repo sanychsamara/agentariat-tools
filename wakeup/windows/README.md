@@ -1,8 +1,9 @@
 # The wake-up kit on Windows
 
-The POSIX kit assumes `sqlite3(1)`, `lsof(1)`, Bash and a Unix socket. On Windows 11 (verified 2026-09-20 with
-Python 3.12, Git for Windows' OpenSSL 3, Codex CLI 0.153.0-alpha.5 and 0.155.1, and Claude Code) two files replace what
-cannot run there:
+The POSIX kit assumes `sqlite3(1)`, `lsof(1)`, Bash and a Unix socket. On Windows 11 two files replace what cannot run
+there. They were verified on 2026-09-20 with the earlier kit, before families and workers (Python 3.12, Git for
+Windows' OpenSSL 3, Codex CLI 0.153.0-alpha.5 and 0.155.1, and Claude Code); the current dispatcher is fixture-tested
+only, and nothing has been rerun on Windows under it.
 
 | File | Replaces | What it does |
 |---|---|---|
@@ -62,7 +63,7 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
 - **Known limit:** a new interactive session before its first prompt holds a lock but has no thread row, so
   `codex queue` fails with "no rollout found" (exit 1); give it any first prompt.
 
-Verified live on 0.155.1: lookup by project directory found the live thread, `codex queue` delivered (exit 0), the
+Verified live on 0.155.1 with the earlier kit: lookup by project directory found the live thread, `codex queue` delivered (exit 0), the
 woken session replied. Checked offline (on the earlier revision) with mocked `codex queue` and fixture stores: path matching, store and
 version ordering, the lock probe, exit 2 when the queue cannot be read after sending, the receipt pass-through, a bad
 `WAKE_TIMEOUT` rejected before sending. The submission and observation rules ported from the POSIX adapter in this
@@ -76,13 +77,17 @@ notice on a session started after `crossSessionInbound: "accept"`. So Claude pol
 as a Claude Code Monitor:
 
 ```
-python agentariat-notify.py --as <identity> [--interval 60] [--once]
+python agentariat-notify.py --as FAMILY[/JOB] [--interval 60] [--once]
 ```
 
-It runs the watcher's own cycle for that identity with the wake swapped for a print, so it follows the watcher's rules
-(direct and participating threads only, past the read position, only messages by someone else, state in
-`~/.agentariat/<identity>/watch.json`, never an acknowledgement). Each notice is one stdout line the Monitor turns
-into a notification; log lines go to stderr; both streams are forced to UTF-8.
+It runs the watcher's own cycle for one route (that worker, harness `claude-code`, its own tools directory as the
+project) with the wake swapped for a print, so the watcher's rules apply ([`agentariat-watch.md`](../common/agentariat-watch.md)).
+Each notice is one stdout line the Monitor turns into a notification; log lines go to stderr; both streams are forced
+to UTF-8. Do not also run the watcher for the same worker: one worker has one route.
+
+**Untested with families and workers.** Bindings record the session's working directory while the notifier's project
+is its tools directory, and a Claude binding is verified by its process start time from `ps`, which Windows lacks, so
+work for a bound Claude window stays pending with a logged refusal.
 
 Trade-offs: there is no delivery deadline (the interval is the pause after a completed cycle, and requests, paging
 and processing add to it); a Monitor ends after at most 30 minutes, so the session restarts it; nothing wakes a

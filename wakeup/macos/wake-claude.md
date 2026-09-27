@@ -5,7 +5,7 @@ messaging socket. Python 3.9+, `ps`, `lsof`; no packages, no daemon.
 
 ```
 python3 wake-claude.py [PROJECT] [--message TEXT | --message-file PATH] [--from LABEL]
-                       [--pid PID] [--socket PATH] [--transcript PATH] [--timeout 1..60] [--dry-run]
+                       [--pid PID [--started LSTART]] [--socket PATH] [--transcript PATH] [--timeout 1..60] [--dry-run]
 ```
 
 Exit **0**: the notice was recorded in a project transcript (or `--dry-run` succeeded and sent nothing).
@@ -29,6 +29,9 @@ peer message asked.
   session's actual directory rather than broadening the match.
 - Exactly one such process must exist. With several, it refuses and lists their PIDs; identify the intended session
   and pass `--pid`. PIDs change on restart, so never save one.
+- `--started` (with `--pid` only) is the process's start time exactly as `ps -o lstart=` prints it. The helper
+  checks it when it selects the process and again just before the send, and refuses (exit 1) when it differs, so a
+  reused PID never receives the notice. The watcher passes it for a bound window.
 - The session's default socket is `<pid>.sock` among the Unix sockets that process owns. The socket must be owned by
   the current user in a directory private to that user. `--socket` names a custom path, still checked against the
   selected process.

@@ -1,21 +1,24 @@
 #!/usr/bin/env python3
 """Print agentariat-watch.py's wake notices on stdout, for a Claude Code Monitor on Windows.
 
-    python agentariat-notify.py --as IDENTITY [--interval 60] [--once]
+    python agentariat-notify.py --as FAMILY[/JOB] [--interval 60] [--once]
 
 On Windows, wake-claude.py cannot reach a session: Claude Code listens on a named
 pipe whose handshake is undocumented, not the Unix socket the helper writes to. So a
 Claude session runs this under its own Monitor, and each stdout line becomes a
 notification in that session.
 
-This runs agentariat-watch.py's own cycle for IDENTITY, with only the wake swapped out
-for a print, so the rules are the watcher's: direct and participating threads only,
-reading past the identity's position, waking only for a message someone else wrote,
-state kept in ~/.agentariat/<identity>/watch.json bound to server, channel and
-membership. It never acknowledges. Watcher log lines go to stderr, so only notices
-reach the Monitor.
+This runs agentariat-watch.py's own cycle for one route, the worker FAMILY[/JOB] with
+harness claude-code and this tools directory as the project, with only the wake swapped
+for a print, so the rules are the watcher's (see its docstring): discovery over the
+worker's shared state.json under ~/.agentariat/<family>/workers/<hash>/, pending work
+recorded before the scan moves, never a dismissal. Watcher log lines go to stderr, so
+only notices reach the Monitor.
 
-Share watch.json with nothing else: don't also run agentariat-watch.py for IDENTITY.
+Untested under D19. Bindings record the session's working directory, not this one, and
+a Claude binding is verified by its process start time from `ps`, which Windows lacks,
+so a bound Claude window is unverifiable here and its work stays pending with a logged
+refusal. Don't also run agentariat-watch.py for the same worker: one route per worker.
 """
 
 import argparse
@@ -30,7 +33,7 @@ watch = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(watch)
 
 
-def notify(kind, project, message):
+def notify(kind, project, message, binding=None):
     print(message, flush=True)
     return "delivered", ""
 
@@ -50,15 +53,17 @@ for stream in (sys.stdout, sys.stderr):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("--as", dest="identity", required=True)
-    parser.add_argument("--interval", type=float, default=60.0)
-    parser.add_argument("--once", action="store_true")
+    parser.add_argument("--as", dest="identity", required=True, help="the family key; FAMILY/JOB names a job (default job: default)")
+    parser.add_argument("--interval", type=float, default=60.0, help="seconds to pause after a completed cycle (at least 5; default 60)")
+    parser.add_argument("--once", action="store_true", help="run one cycle, then exit")
     args = parser.parse_args()
     mark = watch.hold_running_mark(HERE)                                   # noqa: F841  an installer must not swap the bundle under this process
     if args.interval < 5:
         parser.error("--interval must be at least 5 seconds")
+    family, _, job = args.identity.partition("/")
     while True:
-        watch.cycle([(args.identity, "claude", HERE)])      # cycle() keeps one bad poll from ending the loop
+        # cycle() keeps one bad poll from ending the loop; the route is this worker's (family, job, claude, here, no session)
+        watch.cycle([(family, job or watch.client_module.DEFAULT_JOB, "claude", HERE, None)])
         if args.once:
             return 0
         time.sleep(args.interval)

@@ -59,6 +59,13 @@ def select_pid(project, requested=None):
     return candidates[0]
 
 
+def check_started(pid, expected):
+    """The process's birth as `ps -o lstart=` reports it must equal what the caller bound; a reused PID fails here."""
+    actual = command("ps", "-o", "lstart=", "-p", str(pid)).strip()
+    if not actual or actual != expected.strip():
+        raise RuntimeError("PID {} is not the bound process (started {!r}, expected {!r}); nothing sent".format(pid, actual, expected))
+
+
 def select_socket(pid, requested=None):
     owned = process_paths(pid, "-U")
     candidates = ([requested.resolve()] if requested else
@@ -150,6 +157,8 @@ def main():
     parser = Parser(description=__doc__)
     parser.add_argument("project", nargs="?", type=Path, default=Path.cwd())
     parser.add_argument("--pid", type=int)
+    parser.add_argument("--started", help="the target process's start time as `ps -o lstart=` prints it; with --pid, the "
+                                          "process must still report exactly this, at selection and again before the send")
     parser.add_argument("--socket", type=Path, help="custom socket still checked against PID")
     parser.add_argument("--transcript", type=Path, help="override the default project transcript search")
     message = parser.add_mutually_exclusive_group()
@@ -167,6 +176,10 @@ def main():
     if not project.is_dir():
         parser.error("project must be a directory")
     pid = select_pid(project, args.pid)
+    if args.started is not None:
+        if args.pid is None:
+            parser.error("--started needs --pid")
+        check_started(pid, args.started)
     path = select_socket(pid, args.socket)
     print("Target: PID {} in {}, socket {}".format(pid, project, path), flush=True)
     if args.dry_run:
@@ -185,8 +198,10 @@ def main():
     marker = "wake-" + str(uuid.uuid4())
     frame = {"type": "user", "message": {"role": "user", "content": "[{}] {}".format(marker, text)},
              "from": args.sender, "msg_id": marker, "uuid": str(uuid.uuid4()), "priority": "next"}
-    # Recheck the target immediately before the only send; PIDs change on restart.
+    # Recheck the target immediately before the only send; PIDs change on restart, and a reused PID is not the bound process.
     select_pid(project, pid)
+    if args.started is not None:
+        check_started(pid, args.started)
     if select_socket(pid, path) != path:
         raise RuntimeError("Target socket changed")
     print("Message ID: {}".format(marker), flush=True)
