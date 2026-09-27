@@ -46,8 +46,9 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
   launched (target, stores, probe; a state store busy past `WAKE_PROBE_SECONDS` is refused as unavailable, never
   diagnosed as a schema problem); once launched, no receipt is 2 (a message may be accepted, even consumed, without
   one); a receipt with a non-zero exit is treated as submitted; 2 when the item is not taken within `WAKE_TIMEOUT`
-  seconds (1..3600, default 60), is not observed in any readable store within it, or the store cannot be read
-  afterwards.
+  seconds (1..3600, default 60), or the store cannot be read afterwards. A missing or unreadable queue store is not a
+  receipt; a matching marked user turn in the thread's rollout can still confirm the submission. Without reliable
+  confirmation, the result is 2.
 - **Receipt.** Codex's own `Queued message <id> for thread <thread>` line is passed through unchanged and the watcher
   takes the id from it. The adapter finds that exact item in a queue store and confirms when it leaves that same
   store. Codex 0.157.1 can take a wake before the item is ever seen in a store, so the adapter also reads the thread's
@@ -64,8 +65,9 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
   varies; both sides are normalized before comparison.
 - **Which Codex binary:** `CODEX_BIN` if set; else `codex` on `PATH`; else the bundled copy under
   `%LOCALAPPDATA%\OpenAI\Codex\bin\<hash>\codex.exe` with the highest version by `codex --version`.
-- **Known limit:** a new interactive session before its first prompt holds a lock but has no thread row, so
-  `codex queue` fails with "no rollout found" (exit 1); give it any first prompt.
+- **Known limit (0.153 and 0.155.1):** a new interactive session before its first prompt holds a lock but has no
+  thread row, so `codex queue` fails with "no rollout found" (exit 1); give it any first prompt. On 0.157.1 a first
+  wake by thread id was accepted, while a lookup by directory still needs the thread's row.
 
 Verified live on 0.157.1 under families and workers (2026-09-27): a wake by thread id and one by project directory,
 each taken in about a second (exit 0); the watcher woke the session for posts addressed to it, by the thread id its
