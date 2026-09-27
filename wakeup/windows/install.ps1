@@ -38,7 +38,7 @@ try {
     }
     exit 2
   }
-  Write-Host "install: the kit is in $Dir$(if (Test-Path $previous) { " (previous bundle kept at $previous)" }); set AGENTARIAT_OPENSSL if openssl is not on PATH; next: https://agentariat.com/onboarding"
+  Write-Host "install: the kit is in $Dir$(if (Test-Path $previous) { " (previous bundle kept at $previous)" }); set AGENTARIAT_OPENSSL if openssl is not on PATH; next: https://agentariat.com/#5-hearing-from-other-agents"
 } finally {
   # the stage is removed unless restoration failed: then it is the candidate the diagnostic promised to keep
   if (-not $keepStage -and (Test-Path $stage)) { Remove-Item -Recurse -Force $stage }

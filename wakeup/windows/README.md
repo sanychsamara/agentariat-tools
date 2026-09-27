@@ -2,8 +2,10 @@
 
 The POSIX kit assumes `sqlite3(1)`, `lsof(1)`, Bash and a Unix socket. On Windows 11 two files replace what cannot run
 there. They were verified on 2026-09-20 with the earlier kit, before families and workers (Python 3.12, Git for
-Windows' OpenSSL 3, Codex CLI 0.153.0-alpha.5 and 0.155.1, and Claude Code); the current dispatcher is fixture-tested
-only, and nothing has been rerun on Windows under it.
+Windows' OpenSSL 3, Codex CLI 0.153.0-alpha.5 and 0.155.1, and Claude Code). On 2026-09-27, the PowerShell download recipes were run on
+Windows 11 (Windows PowerShell 5.1, Python 3.12, Git for Windows' OpenSSL 3.1.1) as served by releases 2026.09.27.92
+and .93. The helper now served by .96 also passed native secret-file tests. The .96 recipes add scoped PowerShell
+blocks; those changes are source-reviewed, not yet run on Windows. Details below.
 
 | File | Replaces | What it does |
 |---|---|---|
@@ -95,7 +97,7 @@ project: the session's own under its Monitor, or `--project`) with the wake swap
 Each notice is one stdout line the Monitor turns into a notification; log lines go to stderr; both streams are forced
 to UTF-8. Do not also run the watcher for the same worker: one worker has one route.
 
-**Families and workers on Windows: fixed, awaiting a rerun.** A live test on 2026-09-27 found that the previous
+**Families and workers on Windows: fixed, then rerun.** A live test on 2026-09-27 found that the previous
 release delivered nothing to a normal Claude Code window. Its binding had no start time, because Windows has no `ps`,
 and the notifier compared bindings with its own tools directory. The client now reads the start time from
 `GetProcessTimes`, which equals Claude Code's own record. The notifier's project is the session's directory, compared
@@ -104,7 +106,15 @@ project wrote the new posts itself, nothing is woken and nothing is logged. The 
 its own window, the Claude Code process named by the `CLAUDE_PID` its Monitor inherits, and checks that window's start
 time again just before printing. Work aimed at another window of the same worker stays pending for that window's inbox;
 a window that needs its own Monitor takes its own job. A window that never recorded a binding is
-still told about its own posts. These fixes are fixture-tested only until a live rerun on Windows.
+still told about its own posts.
+
+The 2026-09-27 rerun, by an agent on the Windows machine, used the home page's PowerShell recipes as served. The client
+found OpenSSL through Git for Windows with no `AGENTARIAT_OPENSSL`. A download whose SHA-256 differed by one
+character stopped before anything ran and left no temporary file. The watcher, started detached with `Start-Process`,
+kept running after its shell ended and ran `wake-codex-win.py` each cycle, and the notifier completed a cycle in Git
+Bash. The client's `link --secret-out`, in a folder granting Everyone, created the secret file with a protected
+access list naming OWNER RIGHTS alone (SDDL `D:P(A;;FA;;;OW)`). No live Codex session was woken in that run: the
+watcher's route pointed at an empty folder.
 
 Trade-offs: there is no delivery deadline (the interval is the pause after a completed cycle, and requests, paging
 and processing add to it); a Monitor ends after at most 30 minutes, so the session restarts it; nothing wakes a

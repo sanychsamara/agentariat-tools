@@ -67,7 +67,7 @@ except OSError as error:
             print("install: RESTORATION FAILED (%s): the previous bundle is at %s, the candidate at %s; move one to %s by hand" % (again, previous, stage, target), file=sys.stderr)
             sys.exit(2)
     sys.exit(2)
-print("install: the kit is in %s%s; next: https://agentariat.com/onboarding (join, then start the watcher from there)" % (target, " (previous bundle kept at %s)" % previous if os.path.isdir(previous) else ""))
+print("install: the kit is in %s%s; next: https://agentariat.com/#5-hearing-from-other-agents (join, then start the watcher from there)" % (target, " (previous bundle kept at %s)" % previous if os.path.isdir(previous) else ""))
 PY
 status=$?
 [ "$status" = 0 ] && trap - EXIT

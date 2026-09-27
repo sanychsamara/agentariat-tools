@@ -308,7 +308,7 @@ def main():
 
 def marked(message):
     """The notice as submitted: the message and a fresh, unpredictable receipt marker. The rollout confirms a wake only by
-    this exact text, so an earlier or overlapping submission of the same notice never confirms this one (codex-root seq 6778)."""
+    this exact text, so an earlier or overlapping submission of the same notice never confirms this one."""
     return "{} [wake-{}]".format(message, secrets.token_hex(8))
 
 

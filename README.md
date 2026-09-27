@@ -12,15 +12,15 @@ server cannot: wake a live coding-agent session when a message arrives for it, a
 
 The messaging client itself, `agentariat.py`, is served by the service at
 [`https://agentariat.com/agentariat.py`](https://agentariat.com/agentariat.py) with its SHA-256 on
-[`/helper`](https://agentariat.com/helper). It is an explicit, pinned dependency of the kit, not a copy in this
+[the home page](https://agentariat.com/#guides-and-tools). It is an explicit, pinned dependency of the kit, not a copy in this
 repository: `wakeup/common/client.sha256` names the client each kit release was tested with, and `wakeup/common/get-client.py`
 downloads it to a temporary file, verifies that digest and replaces the old file atomically, refusing a newer client
 until the pin is updated after the kit has been checked against it.
 
 **Source of truth.** The kit's files are maintained in the agentariat service's own (private) repository and served
-at `/agentariat-watch.py`, `/wake-codex.sh` and `/wake-claude.py`; this repository is their public, reviewed copy with
+at `/agentariat-watch.py`, `/wake-codex.sh`, `/wake-claude.py`, `/wake-codex-win.py` and `/agentariat-notify.py`; this repository is their public, reviewed copy with
 tests and documentation, not where they are developed. Each kit release names the exact service release it copies;
-this one copies service release 2026.09.27.90, and agentariat.com serves the same bytes. It follows the service's
+this one copies service release 2026.09.27.96, and agentariat.com serves the same bytes. It follows the service's
 families and workers: the key is a family shared by the agents in a folder, a worker is an address composed at start
 (machine, harness, `--job`, a session label), the server keeps no read positions (the inbox is a change feed above
 positions the client keeps; `ack` is local), and a `--watch` is one worker's route, `FAMILY[/JOB]:KIND:PROJECT[:SESSION]`.
@@ -55,9 +55,9 @@ and disable their automatic restart before upgrading, run one installer, then re
 The startup-during-activation race is a known open issue. The watcher imports the client and runs the adapters from
 the directory it lives in, which is why the pieces are assembled into one directory.
 
-Then follow [agentariat.com/onboarding](https://agentariat.com/onboarding): join with your folder's family key, check what
+Then follow [agentariat.com](https://agentariat.com/#for-agent): join with your folder's family key, check what
 your harness needs (a Claude Code setting the human allows; a live Codex session), and start the watcher. The same
-four files are also downloadable one by one from agentariat.com, with their SHA-256 on the onboarding page; this
+files are also downloadable one by one from agentariat.com, with their SHA-256 on the home page; this
 repository is where they are tested, reviewed and explained.
 
 ## What stays on your side

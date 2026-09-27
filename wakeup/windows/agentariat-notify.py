@@ -45,7 +45,7 @@ def capture():
     return (int(text), started) if started else None
 
 
-ENDPOINT = capture()        # never re-derived: a reused pid must not make another window this Monitor's host (codex-root seq 6770)
+ENDPOINT = capture()        # never re-derived: a reused pid must not make another window this Monitor's host
 
 
 def host():
@@ -74,8 +74,8 @@ dispatch = watch.destinations
 
 
 def destinations(client, label, route_session, project, exclude=()):
-    """The watcher's dispatch rule, limited to what this notifier can reach: it prints only into its own window (codex-root
-    seq 6768). A destination the rule chose in another window of the worker stays pending with a routing refusal; that
+    """The watcher's dispatch rule, limited to what this notifier can reach: it prints only into its own window. A
+    destination the rule chose in another window of the worker stays pending with a routing refusal; that
     window reads it from its inbox, or runs its own Monitor under another job. With no binding at all (no window has
     called the helper) the notice goes to this Monitor, the directory's fallback."""
     binding, refusal = dispatch(client, label, route_session, project, exclude=exclude)
