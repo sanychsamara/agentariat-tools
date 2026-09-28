@@ -51,6 +51,13 @@ exit 0 taken · 1 not sent (no or ambiguous target, or `codex queue` failed) · 
   seconds (1..3600, default 60), or the store cannot be read afterwards. A missing or unreadable queue store is not a
   receipt; a matching marked user turn in the thread's rollout can still confirm the submission. Without reliable
   confirmation, the result is 2.
+- **A backlog nobody takes.** Codex 0.157.1 keeps a closed thread's writer lock held, so after a restart a folder can
+  have two threads with held locks. Before launching, the adapter counts the chosen thread's queued messages older than
+  `WAKE_STALE_SECONDS` (60..86400, default 300). If there are any, it refuses with exit 1 and queues nothing, so
+  messages do not pile up behind ones nobody takes; the watcher keeps the work pending and retries. An old item can
+  mean a closed session, one waiting for its human, or a turn longer than the limit, so the count never chooses
+  another thread: several held locks in one folder stay ambiguous, and only a thread id chooses. A queue store that
+  stays busy, cannot be read or has another schema refuses before launch; no queue store yet counts as none waiting.
 - **Receipt.** Codex's own `Queued message <id> for thread <thread>` line is passed through unchanged and the watcher
   takes the id from it. The adapter finds that exact item in a queue store and confirms when it leaves that same
   store. Codex 0.157.1 can take a wake before the item is ever seen in a store, so the adapter also reads the thread's

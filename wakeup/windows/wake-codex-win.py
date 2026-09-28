@@ -192,8 +192,44 @@ def lock_held(path):
     return False
 
 
+def stale_seconds():
+    """WAKE_STALE_SECONDS, validated before anything is launched: a whole number of seconds, 60..86400 (default 300)."""
+    raw = os.environ.get("WAKE_STALE_SECONDS", "300")
+    if not raw.isdigit() or not 60 <= int(raw) <= 86400:
+        sys.exit("wake-codex: WAKE_STALE_SECONDS must be a whole number of seconds, 60..86400; nothing sent")
+    return int(raw)
+
+
+def undrained(thread, seconds):
+    """How many messages have waited in this thread's queue for longer than `seconds`. A session that takes turns drains
+    its queue, so an old item means nobody has for a while: the session was closed, it waits for its human, or it is
+    in a turn longer than `seconds`. It is backpressure on a target already chosen, never evidence that another thread
+    is the right one. No queue store yet (a first use) is none waiting; a store that stays busy, is unreadable or has
+    another schema refuses before anything is launched, since an unknown backlog is not an empty one."""
+    before = int((time.time() - seconds) * 1000)
+    total = 0
+    for db in queue_stores():
+        try:
+            total += query_wait(db, "select count(*) from queued_items where thread_id = ? and created_at_ms < ?",
+                                (thread, before))[0][0]
+        except (sqlite3.DatabaseError, OSError) as error:           # corrupt or unreadable; query_wait handles contention
+            sys.exit("wake-codex: {} could not be read ({}); its backlog is unknown; nothing sent".format(os.path.basename(db), error))
+    return total
+
+
+def refuse_undrained(thread, seconds):
+    """Nothing more is queued behind messages nobody takes: they would pile up, and each would cost a turn when (if ever)
+    the session returns. Exit 1, nothing sent, so the watcher keeps the work pending and tries again."""
+    waiting = undrained(thread, seconds)
+    if waiting:
+        sys.exit("wake-codex: thread {} has {} message(s) queued for more than {} s and none was taken: its session is closed, "
+                 "waits for its human, or is in a long turn; nothing sent, the watcher tries again".format(thread, waiting, seconds))
+
+
 def resolve_thread(target):
+    stale = stale_seconds()
     if THREAD_ID.match(target):
+        refuse_undrained(target, stale)
         return target
     state_db = store("state")
     if not state_db:
@@ -209,14 +245,17 @@ def resolve_thread(target):
     live = [i for i in candidates if probes[i] is True]
     unknown = [i for i in candidates if probes[i] is None]
     if len(live) == 1 and not unknown:
-        return live[0]
-    if not live and not unknown:
-        print("no live Codex session in {}; queueing for {}".format(directory, candidates[0]), file=sys.stderr)
-        return candidates[0]
-    print("cannot pick one live Codex session in {}; pass one thread id:".format(directory), file=sys.stderr)
-    for i in live + unknown:
-        print("  {}{}".format(i, "" if probes[i] else " (lock probe failed)"), file=sys.stderr)
-    sys.exit(1)
+        chosen = live[0]
+    elif not live and not unknown:
+        chosen = candidates[0]
+        print("no live Codex session in {}; queueing for {}".format(directory, chosen), file=sys.stderr)
+    else:                                                   # several held locks: only a configured thread id chooses
+        print("cannot pick one live Codex session in {}; pass one thread id:".format(directory), file=sys.stderr)
+        for i in live + unknown:
+            print("  {}{}".format(i, "" if probes[i] else " (lock probe failed)"), file=sys.stderr)
+        sys.exit(1)
+    refuse_undrained(chosen, stale)
+    return chosen
 
 
 def queue_stores():

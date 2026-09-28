@@ -65,7 +65,8 @@ class WindowsLogicTests(unittest.TestCase):
         db = sqlite3.connect(self.home / "queue_10.sqlite"); rows = db.execute("select id from queued_items").fetchall(); db.close(); return [r[0] for r in rows]
 
     def insert(self, extra=""):
-        return ("import sqlite3, sys\ndb = sqlite3.connect(%r); db.execute(\"insert into queued_items values ('it-1', %r, '{}', 1, 0, 0)\"); db.commit()\n%s"
+        # created now: an item from 1970 would be an old backlog, which the adapter refuses to queue behind
+        return ("import sqlite3, sys, time\nnow = int(time.time() * 1000)\ndb = sqlite3.connect(%r); db.execute(\"insert into queued_items values ('it-1', %r, '{}', 1, ?, ?)\", (now, now)); db.commit()\n%s"
                 % (str(self.home / "queue_10.sqlite"), THREAD, extra))
 
     def test_accepted_then_undecodable_output_and_accepted_then_no_receipt_are_unconfirmed(self):
