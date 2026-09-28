@@ -166,7 +166,7 @@ def log(text):
 
 
 MAX_PAGES = 20
-HARNESS = {"claude": "claude-code", "codex": "codex"}
+HARNESS = {"claude": "claude-code", "codex": "codex", "agy": "antigravity"}    # agy: only agentariat-notify-agy.py serves it
 
 
 def route_client(family, job, kind, session):
@@ -376,6 +376,8 @@ def parse_watch(spec_text, parser):
         project, session = head, tail
     family, _, job = identity.partition("/")
     job = job or client_module.DEFAULT_JOB
+    if kind == "agy":
+        parser.error("--watch %r: an agy session is woken by agentariat-notify-agy.py, started inside that session" % spec_text)
     if kind not in HARNESS or not os.path.isdir(project):
         parser.error("--watch %r: KIND must be claude or codex and PROJECT a directory" % spec_text)
     if not re.fullmatch(r"[A-Za-z0-9._~-]{1,100}", job):

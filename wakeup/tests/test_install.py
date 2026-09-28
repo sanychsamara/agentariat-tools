@@ -63,7 +63,8 @@ class InstallTests(unittest.TestCase):
         code, out = self.install()
         self.assertEqual(code, 0, out)
         self.assertEqual(sorted(p.name for p in self.dir.iterdir()),
-                         ["agentariat-watch.py", "agentariat.py", "client.sha256", "get-client.py", "wake-claude.py", "wake-codex.sh"])
+                         ["agentariat-notify-agy.py", "agentariat-watch.py", "agentariat.py", "client.sha256", "get-client.py", "wake-claude.py",
+                          "wake-codex.sh"])
         self.assertEqual(subprocess.run([sys.executable, str(self.dir / "get-client.py"), "--check"], capture_output=True).returncode, 0)
         self.assertEqual([p.name for p in self.root.iterdir() if "staging" in p.name], [])
         before = self.digests()

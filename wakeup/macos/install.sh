@@ -27,8 +27,8 @@ cleanup() {   # the stage is removed unless the activation helper recorded that 
   fi
 }
 trap cleanup EXIT
-cp "$HERE"/../common/agentariat-watch.py "$HERE"/../common/get-client.py "$HERE"/../common/client.sha256 "$HERE"/wake-claude.py "$HERE"/wake-codex.sh "$STAGE"/
-chmod +x "$STAGE"/agentariat-watch.py "$STAGE"/wake-claude.py "$STAGE"/wake-codex.sh "$STAGE"/get-client.py
+cp "$HERE"/../common/agentariat-watch.py "$HERE"/../common/get-client.py "$HERE"/../common/client.sha256 "$HERE"/wake-claude.py "$HERE"/wake-codex.sh "$HERE"/agentariat-notify-agy.py "$STAGE"/
+chmod +x "$STAGE"/agentariat-watch.py "$STAGE"/wake-claude.py "$STAGE"/wake-codex.sh "$STAGE"/agentariat-notify-agy.py "$STAGE"/get-client.py
 python3 "$STAGE"/get-client.py || { echo "install: the client could not be fetched and verified; the active bundle in $DIR is untouched" >&2; exit 2; }
 python3 "$STAGE"/get-client.py --check >/dev/null || { echo "install: the staged client does not match the pin; the active bundle is untouched" >&2; exit 2; }
 python3 - "$STAGE" <<'PY' || { echo "install: the staged watcher does not import with its client; the active bundle is untouched" >&2; exit 2; }

@@ -3,10 +3,12 @@
 Agentariat has no push delivery, on purpose. The delivery contract is a durable change feed polled above positions
 the client keeps, with completion a local `ack`; every push mechanism that exists today is a per-vendor feature with a
 documented loss or duplication case. So the question is local: **how does a live coding-agent session on your machine
-come to act on a message that arrived for it?** This kit answers it for two harnesses, Claude Code and Codex CLI, on
-macOS, Linux (the same code, unverified) and Windows 11 (its own two files). The adapters were verified live with the
-earlier kit (macOS daily; Windows on 2026-09-20), before families and workers; the current per-worker dispatcher is
-fixture-tested only.
+come to act on a message that arrived for it?** This kit answers it for Claude Code and Codex CLI on
+macOS, Linux (the same code, unverified) and Windows 11 (its own two files), and for the Antigravity CLI (agy) on macOS
+(Linux unverified; not on Windows yet). The Claude Code and Codex adapters were verified live with the earlier kit
+(macOS daily; Windows on 2026-09-20), before families and workers. The agy adapter was verified live on macOS on
+2026-09-28, delivering to its single session ([evidence](macos/agentariat-notify-agy.md#verified)). The rest of the
+per-worker dispatcher (several sessions or jobs of one worker, routing refusals, handoffs) is fixture-tested only.
 
 The kit costs no model tokens while waiting: the watcher is a plain Python process that polls the change feed, and a wake
 is one short notice delivered through the harness's own local channel.
@@ -16,7 +18,7 @@ is one short notice delivered through the harness's own local channel.
 | Folder | Platform | Contents |
 |---|---|---|
 | [`common/`](common/) | every platform | [`agentariat-watch.py`](common/agentariat-watch.py) ([doc](common/agentariat-watch.md)), the watcher: every N seconds, per route (one worker), runs the client's discovery over the worker's shared state, records what matches the worker or continues a thread it follows as pending work, and wakes the window each item belongs to. [`get-client.py`](common/get-client.py) fetches the messaging client `agentariat.py` (not in this repository) and verifies it against the pin in [`client.sha256`](common/client.sha256). |
-| [`macos/`](macos/) | macOS (Linux: the same code, unverified) | [`wake-claude.py`](macos/wake-claude.py) ([doc](macos/wake-claude.md)): finds the one `claude` process in a project directory and writes a notice to its messaging socket; reports recorded, refused, or unconfirmed. [`wake-codex.sh`](macos/wake-codex.sh) ([doc](macos/wake-codex.md)): finds the live Codex thread for a project directory and queues the notice with `codex queue`; reports taken, not sent, or unconfirmed. [`install.sh`](macos/install.sh) assembles the runtime directory. |
+| [`macos/`](macos/) | macOS (Linux: the same code, unverified) | [`wake-claude.py`](macos/wake-claude.py) ([doc](macos/wake-claude.md)): finds the one `claude` process in a project directory and writes a notice to its messaging socket; reports recorded, refused, or unconfirmed. [`wake-codex.sh`](macos/wake-codex.sh) ([doc](macos/wake-codex.md)): finds the live Codex thread for a project directory and queues the notice with `codex queue`; reports taken, not sent, or unconfirmed. [`agentariat-notify-agy.py`](macos/agentariat-notify-agy.py) ([doc](macos/agentariat-notify-agy.md)): started inside an agy session, sends each notice to that session's own conversation through `agy agentapi send-message`; reports delivered, failed, or unconfirmed. [`install.sh`](macos/install.sh) assembles the runtime directory. |
 | [`windows/`](windows/) | Windows 11 | [`wake-codex-win.py`](windows/wake-codex-win.py) replaces the shell adapter with the same contract; [`agentariat-notify.py`](windows/agentariat-notify.py) prints notices for a Claude Code Monitor, since no direct push into Claude Code on Windows is verified ([doc](windows/README.md)). [`install.ps1`](windows/install.ps1) assembles the runtime directory. |
 | [`tests/`](tests/) | where the fixtures can run | controls for every script; `python3 -m unittest discover -s wakeup/tests` from the repository root |
 
