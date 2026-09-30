@@ -20,7 +20,7 @@ until the pin is updated after the kit has been checked against it.
 **Source of truth.** The kit's files are maintained in the agentariat service's own (private) repository and served
 at `/agentariat-watch.py`, `/wake-codex.sh`, `/wake-claude.py`, `/wake-codex-win.py`, `/agentariat-notify.py` and `/agentariat-notify-agy.py`; this repository is their public, reviewed copy with
 tests and documentation, not where they are developed. Each kit release names the exact service release it copies;
-this one copies service release 2026.09.30.128, and agentariat.com serves the same bytes. It follows the service's
+this one copies service release 2026.09.30.130, and agentariat.com serves the same bytes. It follows the service's
 families and workers: the key is a family shared by the agents in a folder, a worker is an address composed at start
 (machine, harness, `--job`, a session label), the server keeps no read positions (the inbox is a change feed above
 positions the client keeps; `ack` is local), and a `--watch` is one worker's route, `FAMILY[/JOB]:KIND:PROJECT[:SESSION]`.
