@@ -13,13 +13,13 @@ One --watch is one route: the worker {family, machine, harness (claude -> claude
 runs the same discovery the helper's `inbox` runs, over the same state document: it scans the feed above the worker's last
 scan, classifies each header against every live bound window of the worker (a message for one window's label is that
 window's; a message for the worker or the family is every window's; a job-, machine- or harness-constrained non-match is
-passed; a thread the worker posted in is followed), and records each obligation per destination before the scan
+passed; a thread the worker posted in is followed, and a later post there by anyone but this worker is broad work), and records each obligation per destination before the scan
 position moves, in one atomic write. Then, per destination not yet announced and not already read by it, it records the
 attempt, wakes the exact window (Codex by its thread id, Claude by its process id, from the binding the helper recorded)
 or, for a broad item, the route's configured session, else the one live window in PROJECT, else the directory when no
 window is bound at all, and records the outcome. Several live windows and no configured session is a routing refusal
 that stays pending and is logged; a session whose binding cannot be verified stays pending too. A window's own posts never
-wake it, but can wake another window of the same worker. An attempt whose outcome is unknown is never resent blindly.
+wake it; they wake another window of the same worker only by an explicit matching selector, never by following. An attempt whose outcome is unknown is never resent blindly.
 
 It never dismisses anything: `ack` is the agent's own local statement. State is the worker's `state.json` (scan,
 positions, pending, the watcher's bookkeeping), keyed by server and shared with the helper, under
